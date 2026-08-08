@@ -11,6 +11,14 @@ html,body { width:100%; height:100%; background:#000; overflow:hidden;
   overscroll-behavior:none; -webkit-text-size-adjust:100%; }
 canvas { touch-action:none; }
 
+/* ── Embedded in an iframe: hand scrolling back to the host page.
+      `overscroll-behavior:none` is what stops a scroll from chaining out to the
+      parent, and `touch-action:none` does the same for a swipe. Both are right
+      for a full-page tool — they stop pull-to-refresh and rubber-banding — and
+      both trap the visitor's scroll when the tool sits inside a page. ── */
+html.is-embedded, html.is-embedded body { overscroll-behavior:auto; }
+html.is-embedded canvas { touch-action:pan-y; }
+
 /* ── Smoked glass. The artwork underneath is pale paper and cool toner grey,
       so a cream panel fought it. Graphite glass sits behind the picture
       instead of competing with it, and the blur keeps the drawing legible
@@ -459,6 +467,12 @@ const isTouch = _uiParam
   ? _uiParam === 'mobile'
   : (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 560);
 document.documentElement.classList.add(isTouch ? 'ui-mobile' : 'ui-desktop');
+
+// Inside an iframe the page belongs to someone else — never swallow their scroll
+const isEmbedded = (function () {
+  try { return window.self !== window.top; } catch (e) { return true; }
+})();
+if (isEmbedded) document.documentElement.classList.add('is-embedded');
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let camOn = true;
@@ -622,11 +636,46 @@ function makeVideoElement() {
   vid.autoplay = true;
   vid.muted = true;
   vid.playsInline = true;
+  // Attributes as well as properties: iOS checks the attributes when deciding
+  // whether a video is allowed to start on its own.
+  vid.setAttribute('muted', '');
+  vid.setAttribute('autoplay', '');
   vid.setAttribute('playsinline', '');
   vid.setAttribute('webkit-playsinline', '');
-  vid.style.display = 'none';
+  // Kept in the layout, not display:none. Safari on iOS will not decode or play
+  // a video element that isn't rendered — the camera survived it because its
+  // frames are pushed in, but a file simply never started.
+  vid.style.position = 'fixed';
+  vid.style.left = '0';
+  vid.style.top = '0';
+  vid.style.width = '2px';
+  vid.style.height = '2px';
+  vid.style.opacity = '0.01';
+  vid.style.pointerEvents = 'none';
+  vid.style.zIndex = '-1';
   document.body.appendChild(vid);
   return vid;
+}
+
+// Autoplay can be refused at the moment the source is set and then allowed a
+// beat later, once enough has decoded. Ask a few times before giving up, and
+// tell the truth in the UI if it never starts.
+function nudgePlay(vid, onGiveUp) {
+  let tries = 0;
+  const attempt = () => {
+    if (!vid.paused) return;
+    vid.play().then(() => {
+      vid.removeEventListener('canplay', attempt);
+      vid.removeEventListener('loadeddata', attempt);
+    }).catch(() => {
+      if (++tries < 6) setTimeout(attempt, 250);
+      else if (onGiveUp) onGiveUp();
+    });
+  };
+  vid.addEventListener('loadeddata', attempt);
+  vid.addEventListener('canplay', attempt);
+  attempt();
+  return attempt;
 }
 
 function retireCapture() {
@@ -638,7 +687,7 @@ function attachStream(stream) {
   retireCapture();
   const vid = makeVideoElement();
   vid.srcObject = stream;
-  vid.play().catch(() => {});
+  nudgePlay(vid);
 
   _capture = makeCapture(vid, { stream, mirror: facingMode === 'user', kind: 'camera' });
 
@@ -665,9 +714,16 @@ function loadClip(input) {
   retireCapture();
 
   const vid = makeVideoElement();
-  vid.src = URL.createObjectURL(file);
   vid.loop = true;
-  vid.play().catch(() => {});
+  vid.setAttribute('loop', '');
+  vid.src = URL.createObjectURL(file);
+  vid.load();
+  nudgePlay(vid, () => {
+    // genuinely blocked — show the real state instead of a Pause button that lies
+    clipPlaying = false;
+    document.getElementById('btn-clip-play').textContent = '▶ Play';
+    setStatus('tap Play to start the clip');
+  });
 
   // never mirrored — a file is not a selfie
   _capture = makeCapture(vid, { mirror: false, kind: 'clip' });
@@ -677,6 +733,14 @@ function loadClip(input) {
     srcNote = (vid.videoWidth || 0) + 'x' + (vid.videoHeight || 0);
     sizeCaptureSafe();
     setStatus('clip: ' + file.name + ' · ' + srcNote);
+  });
+  vid.addEventListener('play',  () => {
+    clipPlaying = true;
+    document.getElementById('btn-clip-play').textContent = '❙❙ Pause';
+  });
+  vid.addEventListener('pause', () => {
+    clipPlaying = false;
+    document.getElementById('btn-clip-play').textContent = '▶ Play';
   });
   vid.addEventListener('error', () => {
     setStatus('could not read that file — try an MP4 or WebM');
@@ -701,8 +765,9 @@ function toggleClip() {
 
 function restartClip() {
   if (!_capture || _capture.kind !== 'clip') return;
-  try { _capture.elt.currentTime = 0; } catch(e) {}
-  if (!clipPlaying) toggleClip();
+  const vid = _capture.elt;
+  try { vid.currentTime = 0; } catch(e) {}
+  vid.play().catch(() => setStatus('the browser is blocking playback — tap Play'));
 }
 
 async function startCamera() {
@@ -958,10 +1023,21 @@ if (isTouch) {
   window.showError = show;
 })();
 
-// on a phone, tapping the picture closes the control sheet
+// on a phone, tapping the picture closes the control sheet — but only on a real
+// tap, so a scroll gesture over an embedded copy still scrolls the host page
 if (isTouch) {
+  let downY = null, downT = 0;
   document.addEventListener('pointerdown', e => {
-    if (panelVisible && e.target && e.target.tagName === 'CANVAS') togglePanel();
+    downY = e.clientY; downT = Date.now();
+  });
+  document.addEventListener('pointerup', e => {
+    if (downY === null) return;
+    const moved = Math.abs(e.clientY - downY);
+    const quick = Date.now() - downT < 400;
+    downY = null;
+    if (moved < 10 && quick && panelVisible && e.target && e.target.tagName === 'CANVAS') {
+      togglePanel();
+    }
   });
 }
 
