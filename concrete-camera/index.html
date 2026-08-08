@@ -11,90 +11,132 @@ html,body { width:100%; height:100%; background:#000; overflow:hidden;
   overscroll-behavior:none; -webkit-text-size-adjust:100%; }
 canvas { touch-action:none; }
 
+/* ── Smoked glass. The artwork underneath is pale paper and cool toner grey,
+      so a cream panel fought it. Graphite glass sits behind the picture
+      instead of competing with it, and the blur keeps the drawing legible
+      through the panel. ── */
+:root {
+  --glass:        rgba(26, 28, 32, 0.58);
+  --glass-solid:  rgba(26, 28, 32, 0.94);
+  --hairline:     rgba(255, 255, 255, 0.14);
+  --hairline-soft:rgba(255, 255, 255, 0.08);
+  --ink:          rgba(255, 255, 255, 0.94);
+  --ink-dim:      rgba(255, 255, 255, 0.58);
+  --ink-faint:    rgba(255, 255, 255, 0.34);
+  --field:        rgba(255, 255, 255, 0.07);
+}
+
 #overlay {
   position:fixed; top:0; right:0; height:100%; width:288px;
-  background:rgba(245,243,238,0.97); border-left:1px solid #ccc;
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(22px) saturate(115%);
+  backdrop-filter:blur(22px) saturate(115%);
+  border-left:1px solid var(--hairline);
+  box-shadow:-1px 0 40px rgba(0,0,0,.28), inset 1px 0 0 rgba(255,255,255,.06);
   display:flex; flex-direction:column;
-  font-family:'Courier New',monospace; font-size:10px; color:#333;
-  z-index:10; transition:transform .25s ease;
+  font-family:'Courier New',monospace; font-size:10px; color:var(--ink);
+  z-index:10; transition:transform .28s cubic-bezier(.4,0,.2,1);
 }
 #overlay.hidden { transform:translateX(288px); }
 
+/* no blur support (older Firefox) — fall back to near-opaque, never washed out */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
+  #overlay, #panel-toggle, #capture-bar button, #startcam { background:var(--glass-solid); }
+}
+
 #panel-toggle {
   position:fixed; top:12px; right:12px; z-index:20;
-  background:rgba(245,243,238,0.92); border:1px solid #aaa;
-  color:#555; font-family:'Courier New',monospace; font-size:10px;
-  letter-spacing:2px; padding:6px 12px; cursor:pointer;
-  text-transform:uppercase; transition:all .15s;
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(18px) saturate(115%);
+  backdrop-filter:blur(18px) saturate(115%);
+  border:1px solid var(--hairline);
+  color:var(--ink-dim); font-family:'Courier New',monospace; font-size:10px;
+  letter-spacing:2px; padding:7px 13px; cursor:pointer; border-radius:2px;
+  text-transform:uppercase; transition:color .18s, border-color .18s;
 }
-#panel-toggle:hover { color:#111; border-color:#333; }
+#panel-toggle:hover { color:var(--ink); border-color:rgba(255,255,255,.32); }
 
 .panel-scroll { flex:1; overflow-y:auto; padding:14px 12px; }
 .panel-scroll::-webkit-scrollbar { width:2px; }
-.panel-scroll::-webkit-scrollbar-thumb { background:#ccc; }
+.panel-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,.2); }
 
 .sec {
   font-size:8px; letter-spacing:3px; text-transform:uppercase;
-  color:#999; padding:10px 0 7px; border-top:1px solid #ddd;
-  margin-top:4px;
+  color:var(--ink-faint); padding:11px 0 7px;
+  border-top:1px solid var(--hairline-soft); margin-top:4px;
 }
 .sec:first-child { border-top:none; margin-top:0; padding-top:2px; }
 
 .ctrl { margin-bottom:10px; }
-.ctrl-row { display:flex; justify-content:space-between; margin-bottom:3px; }
-.ctrl-name { font-size:9px; color:#666; letter-spacing:.5px; }
-.ctrl-val { font-size:9px; color:#222; font-weight:600; }
+.ctrl-row { display:flex; justify-content:space-between; margin-bottom:4px; }
+.ctrl-name { font-size:9px; color:var(--ink-dim); letter-spacing:.5px; }
+.ctrl-val { font-size:9px; color:var(--ink); font-weight:600; }
+
 input[type=range] {
   -webkit-appearance:none; width:100%; height:2px;
-  background:#ccc; cursor:pointer; border-radius:1px;
+  background:rgba(255,255,255,.22); cursor:pointer; border-radius:1px;
 }
 input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance:none; width:9px; height:9px;
-  border-radius:50%; background:#333; cursor:pointer;
+  -webkit-appearance:none; width:10px; height:10px;
+  border-radius:50%; background:#fff; cursor:pointer;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
 }
-input[type=range]:hover::-webkit-slider-thumb { background:#000; }
+input[type=range]::-moz-range-thumb {
+  width:10px; height:10px; border:none; border-radius:50%; background:#fff;
+}
+input[type=range]:hover::-webkit-slider-thumb { box-shadow:0 0 0 4px rgba(255,255,255,.14); }
 
-select {
-  width:100%; background:#fff; border:1px solid #ccc;
-  color:#333; font-family:'Courier New',monospace; font-size:10px;
-  padding:4px 6px; cursor:pointer; outline:none;
+select, textarea {
+  width:100%; background:var(--field); border:1px solid var(--hairline);
+  color:var(--ink); font-family:'Courier New',monospace;
+  padding:6px; outline:none; border-radius:2px;
 }
-select:focus { border-color:#666; }
+select { font-size:10px; padding:5px 6px; cursor:pointer; }
+select option { background:#1a1c20; color:#fff; }
+textarea { font-size:9px; resize:vertical; height:52px; line-height:1.5; }
+select:focus, textarea:focus { border-color:rgba(255,255,255,.4); background:rgba(255,255,255,.11); }
 
-textarea {
-  width:100%; background:#fff; border:1px solid #ccc;
-  color:#333; font-family:'Courier New',monospace; font-size:9px;
-  padding:6px; resize:vertical; height:52px; outline:none;
-  line-height:1.5;
+input[type=color] {
+  background:transparent; border:1px solid var(--hairline) !important;
+  border-radius:3px; cursor:pointer;
 }
-textarea:focus { border-color:#666; }
 
 .btn-row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
 button {
-  padding:5px 10px; font-size:9px; letter-spacing:1.5px;
-  font-family:'Courier New',monospace; cursor:pointer;
-  border:1px solid #bbb; background:#eee; color:#666;
-  text-transform:uppercase; transition:all .15s; flex:1; min-width:60px;
+  padding:6px 10px; font-size:9px; letter-spacing:1.5px;
+  font-family:'Courier New',monospace; cursor:pointer; border-radius:2px;
+  border:1px solid var(--hairline); background:rgba(255,255,255,.05);
+  color:var(--ink-dim);
+  text-transform:uppercase; transition:all .18s; flex:1; min-width:60px;
 }
-button:hover { color:#000; border-color:#555; background:#e0e0e0; }
-button.on { border-color:#222; color:#111; background:#fff; font-weight:600; }
-button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink .8s infinite; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+button:hover { color:var(--ink); border-color:rgba(255,255,255,.34); background:rgba(255,255,255,.12); }
+button.on {
+  border-color:transparent; color:#16181c; background:var(--ink); font-weight:700;
+}
+button.rec {
+  border-color:#ff6b5e; color:#ff8b80; background:rgba(255,80,66,.14);
+  animation:blink .8s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.45} }
 
 #mic-meter {
-  height:3px; background:#ddd; margin-top:6px; border-radius:2px; overflow:hidden;
+  height:3px; background:rgba(255,255,255,.14); margin-top:6px;
+  border-radius:2px; overflow:hidden;
 }
-#mic-bar { height:100%; width:0%; background:#2a7ae2; transition:width .05s; }
+#mic-bar { height:100%; width:0%; background:rgba(255,255,255,.75); transition:width .05s; }
 
 #startcam {
   position:fixed; z-index:40; display:none;
   left:50%; top:50%; transform:translate(-50%,-50%);
-  padding:20px 28px; font-size:14px; letter-spacing:3px;
-  background:rgba(255,255,255,0.95); color:#111;
-  border:2px solid #111; border-radius:4px;
+  padding:20px 30px; font-size:13px; letter-spacing:4px;
+  background:var(--glass); color:var(--ink);
+  -webkit-backdrop-filter:blur(22px) saturate(115%);
+  backdrop-filter:blur(22px) saturate(115%);
+  border:1px solid rgba(255,255,255,.28); border-radius:3px;
   font-family:'Courier New',monospace; font-weight:700;
-  box-shadow:0 4px 20px rgba(0,0,0,.35); min-width:0; flex:none;
+  box-shadow:0 8px 40px rgba(0,0,0,.4); min-width:0; flex:none;
 }
+#startcam:hover { background:rgba(26,28,32,0.72); border-color:rgba(255,255,255,.5); }
 
 /* ── phone capture bar: shutter always within thumb reach ── */
 #capture-bar {
@@ -104,36 +146,40 @@ button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink 
 }
 #shutter {
   width:62px; height:62px; border-radius:50%;
-  background:rgba(255,255,255,0.92); border:3px solid rgba(0,0,0,0.55);
-  box-shadow:0 2px 10px rgba(0,0,0,.28); cursor:pointer;
-  padding:0; min-width:0; flex:none;
+  background:var(--glass); border:1px solid rgba(255,255,255,.4);
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  box-shadow:0 4px 18px rgba(0,0,0,.32); cursor:pointer;
+  padding:0; min-width:0; flex:none; transition:transform .12s;
 }
-#shutter:active { transform:scale(0.94); background:#fff; }
+#shutter:active { transform:scale(0.93); }
 #shutter::after {
-  content:''; display:block; width:44px; height:44px; margin:5px auto;
-  border-radius:50%; background:#222;
+  content:''; display:block; width:42px; height:42px; margin:9px auto;
+  border-radius:50%; background:rgba(255,255,255,.92);
 }
 #recbtn {
   width:52px; height:52px; border-radius:50%; flex:none; min-width:0;
-  background:rgba(255,255,255,0.92); border:2px solid rgba(0,0,0,0.4);
-  color:#c0392b; font-size:10px; letter-spacing:0; font-weight:700;
-  box-shadow:0 2px 10px rgba(0,0,0,.24); padding:0;
+  background:var(--glass); border:1px solid rgba(255,255,255,.28);
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  color:#ff8b80; font-size:10px; letter-spacing:0; font-weight:700;
+  box-shadow:0 4px 18px rgba(0,0,0,.28); padding:0;
 }
-#recbtn.rec { background:#c0392b; color:#fff; border-color:#fff; }
+#recbtn.rec { background:rgba(200,45,35,.82); color:#fff; border-color:rgba(255,255,255,.6); }
 
 /* ── saved-image sheet: iOS cannot use a download link ── */
 #saveview {
   position:fixed; inset:0; z-index:70; display:none;
-  background:rgba(20,20,20,0.94); flex-direction:column;
+  background:rgba(18,19,22,0.82);
+  -webkit-backdrop-filter:blur(26px); backdrop-filter:blur(26px);
+  flex-direction:column;
   align-items:center; justify-content:center; gap:14px; padding:20px;
 }
 #saveview img, #saveview video { max-width:100%; max-height:64vh; box-shadow:0 4px 24px rgba(0,0,0,.5); }
 #saveview img, #saveview video { display:none; }
 .save-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
 .save-actions button { flex:none; padding:12px 18px; font-size:12px; }
-#save-share { background:#fff; border-color:#111; color:#111; font-weight:700; }
+#save-share { background:var(--ink); border-color:transparent; color:#16181c; font-weight:700; }
 #saveview p {
-  color:#eee; font-family:'Courier New',monospace; font-size:12px;
+  color:var(--ink-dim); font-family:'Courier New',monospace; font-size:12px;
   letter-spacing:1px; text-align:center; line-height:1.6;
 }
 #saveview button { max-width:220px; }
@@ -147,22 +193,22 @@ button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink 
 }
 
 #status-bar {
-  padding:8px 12px; font-size:9px; color:#888; letter-spacing:1px;
-  border-top:1px solid #ddd; min-height:28px;
+  padding:9px 12px; font-size:9px; color:var(--ink-faint); letter-spacing:1px;
+  border-top:1px solid var(--hairline-soft); min-height:28px;
 }
 
 /* ── touch devices: fingers need bigger targets than a 9px slider thumb ── */
 @media (pointer: coarse) {
   input[type=range] { height:26px; background:transparent; }
   input[type=range]::-webkit-slider-runnable-track {
-    height:3px; background:#c4c4c4; border-radius:2px;
+    height:3px; background:rgba(255,255,255,.22); border-radius:2px;
   }
   input[type=range]::-webkit-slider-thumb {
     width:22px; height:22px; margin-top:-10px;
-    background:#333; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.3);
+    background:#fff; border:none; box-shadow:0 2px 6px rgba(0,0,0,.45);
   }
   input[type=range]::-moz-range-thumb {
-    width:22px; height:22px; border:2px solid #fff; background:#333;
+    width:22px; height:22px; border:none; background:#fff;
   }
   button { padding:10px 12px; font-size:11px; min-width:76px; }
   input[type=color] { width:44px !important; height:32px !important; }
@@ -179,20 +225,20 @@ button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink 
   #overlay {
     top:auto; bottom:0; left:0; right:0;
     width:100%; height:38vh; height:38dvh;
-    border-left:none; border-top:1px solid #bbb;
-    border-radius:12px 12px 0 0;
-    box-shadow:0 -4px 20px rgba(0,0,0,.18);
+    border-left:none; border-top:1px solid var(--hairline);
+    border-radius:14px 14px 0 0;
+    box-shadow:0 -8px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
     padding-bottom:env(safe-area-inset-bottom);
   }
   #overlay.hidden { transform:translateY(100%); }
   #overlay::before {
     content:''; display:block; width:38px; height:4px; border-radius:2px;
-    background:#ccc; margin:8px auto 2px; flex:none;
+    background:rgba(255,255,255,.32); margin:9px auto 2px; flex:none;
   }
   #panel-toggle {
     top:auto; bottom:calc(24px + env(safe-area-inset-bottom));
     right:14px; padding:10px 14px; font-size:10px;
-    border-radius:20px; background:rgba(245,243,238,0.9);
+    border-radius:20px;
   }
   #overlay:not(.hidden) ~ #panel-toggle { bottom:calc(38dvh + 10px); }
   #overlay:not(.hidden) ~ #capture-bar { bottom:calc(38dvh + 10px); }
@@ -205,7 +251,7 @@ button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink 
 </head>
 <body>
 
-<div id="overlay">
+<div id="overlay" class="hidden">
   <div class="panel-scroll">
 
     <div class="sec">CAMERA</div>
@@ -362,35 +408,6 @@ button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink 
       <input type="range" id="drough" min="0" max="8" step="0.1" value="1.5">
     </div>
 
-    <div class="sec">GLOW</div>
-    <div class="btn-row">
-      <button id="btn-glow" onclick="toggleGlow()">Glow OFF</button>
-    </div>
-    <div class="ctrl">
-      <select id="glowmode">
-        <option value="neon">neon — clean halo, any background</option>
-        <option value="bloom">bloom — overexposed, dark bg only</option>
-      </select>
-    </div>
-    <div class="ctrl">
-      <div class="ctrl-row"><span class="ctrl-name">radius</span><span class="ctrl-val" id="v-grad">14</span></div>
-      <input type="range" id="grad" min="1" max="60" step="1" value="14">
-    </div>
-    <div class="ctrl">
-      <div class="ctrl-row"><span class="ctrl-name">intensity</span><span class="ctrl-val" id="v-gint">0.70</span></div>
-      <input type="range" id="gint" min="0.05" max="1" step="0.01" value="0.7">
-    </div>
-    <div class="ctrl">
-      <div class="ctrl-row"><span class="ctrl-name">spread</span><span class="ctrl-val" id="v-gpass">2</span></div>
-      <input type="range" id="gpass" min="1" max="4" step="1" value="2">
-    </div>
-    <div class="ctrl">
-      <div class="ctrl-row" style="align-items:center;">
-        <span class="ctrl-name">glow color</span>
-        <input type="color" id="col-glow" value="#38e8ff" style="width:36px;height:22px;border:1px solid #bbb;border-radius:3px;cursor:pointer;padding:1px;">
-      </div>
-    </div>
-
     <div class="sec" id="export-sec">EXPORT</div>
     <div class="btn-row" id="export-row">
       <button onclick="doSave()">Save PNG</button>
@@ -419,7 +436,7 @@ button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink 
   </div>
 </div>
 
-<button id="panel-toggle" onclick="togglePanel()">CONTROLS ◂</button>
+<button id="panel-toggle" onclick="togglePanel()">CONTROLS ▸</button>
 <div id="errbox" onclick="this.style.display='none'"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
@@ -431,9 +448,8 @@ const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
 let camOn = true;
 let facingMode = 'user';
 let isRecording = false, mediaRecorder, recordChunks = [];
-let glowOn = false;
 let layer = null;               // offscreen buffer: all text is drawn here first
-let panelVisible = true;
+let panelVisible = false;   // the panel starts closed — the picture is the point
 let glyphCount = 0;
 let cachedPaths = null;
 let lumBuf = null, lumPrev = null, rawLum = null;
@@ -517,13 +533,6 @@ function toggleUpright() {
   btn.classList.toggle('on', upright);
 }
 
-// ── Glow toggle ──────────────────────────────────────────
-function toggleGlow() {
-  glowOn = !glowOn;
-  const btn = document.getElementById('btn-glow');
-  btn.textContent = 'Glow ' + (glowOn ? 'ON' : 'OFF');
-  btn.classList.toggle('on', glowOn);
-}
 
 // ── Camera ───────────────────────────────────────────────
 // ── Camera ───────────────────────────────────────────────
@@ -830,9 +839,6 @@ if (isTouch) {
     set('etemp', 0.75);   // steadier against handshake
     set('esize', 22);     // readable type on a small screen
     set('elgap', 24);     // more air between lines
-    document.getElementById('overlay').classList.add('hidden');
-    panelVisible = false;
-    document.getElementById('panel-toggle').textContent = 'CONTROLS \u25b8';
   });
 }
 
@@ -966,11 +972,6 @@ new p5(function(p) {
     const baseOff   = 0;
     const echaos    = sv('echaos');
 
-    const glowCol  = document.getElementById('col-glow').value;
-    const glowMode = document.getElementById('glowmode').value;
-    const glowRad  = sv('grad');
-    const glowInt  = sv('gint');
-    const glowPass = sv('gpass');
 
 
     const edgeTxt = document.getElementById('etxt').value || 'edge';
@@ -1129,7 +1130,7 @@ new p5(function(p) {
       p.pop();
     }
 
-    // all text goes into the offscreen layer so glow can be applied to the whole mass
+    // all text goes into one offscreen layer, then composited in a single blit
     const g = layer;
     g.clear();
     g.textFont(font);
@@ -1264,31 +1265,8 @@ new p5(function(p) {
       p.pop();
     }
 
-    // ── composite layer onto canvas, with optional glow ──
-    const ctx = p.drawingContext;
-    if (glowOn) {
-      ctx.save();
-      if (glowMode === 'neon') {
-        // shadow taken from the layer's alpha silhouette — one halo per glyph
-        ctx.shadowColor = glowCol;
-        ctx.globalAlpha = glowInt;
-        for (let i = 0; i < glowPass; i++) {
-          ctx.shadowBlur = glowRad * (1 + i * 0.9);
-          ctx.drawImage(g.elt, 0, 0, W, H);
-        }
-      } else {
-        // additive blur passes — only brightens, so it needs a dark background
-        ctx.globalCompositeOperation = 'lighter';
-        for (let i = 0; i < glowPass; i++) {
-          ctx.filter = 'blur(' + (glowRad * (1 + i * 1.4)) + 'px)';
-          ctx.globalAlpha = glowInt / (i + 1);
-          ctx.drawImage(g.elt, 0, 0, W, H);
-        }
-        ctx.filter = 'none';
-      }
-      ctx.restore();
-    }
-    ctx.drawImage(g.elt, 0, 0, W, H);
+    // ── composite the type layer onto the canvas ──
+    p.drawingContext.drawImage(g.elt, 0, 0, W, H);
 
     // ── status readout ──
     if (p.frameCount % 15 === 0) {
