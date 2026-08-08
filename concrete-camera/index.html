@@ -261,10 +261,6 @@ button.rec {
     </div>
 
 
-    <div class="ctrl">
-      <div class="ctrl-row"><span class="ctrl-name">framing · fit ← → fill</span><span class="ctrl-val" id="v-frame">1.00</span></div>
-      <input type="range" id="frame" min="0" max="1" step="0.01" value="1">
-    </div>
 
     <div class="sec">IMAGE</div>
     <div class="ctrl">
@@ -359,7 +355,7 @@ button.rec {
 
     <div class="ctrl">
       <div class="ctrl-row"><span class="ctrl-name">edge text</span></div>
-      <textarea id="etxt">In the language of statistics an outlier is a stray data point present within the sample yet drifting from expectation. In the context of industrial production it names a case no design had accounted for. In sociology it marks a misplaced phenomenon. In everyday life sometimes it is simply an improvisation.</textarea>
+      <textarea id="etxt">Hello, you are my very special one</textarea>
     </div>
 
     <div class="sec">FONT</div>
@@ -611,7 +607,7 @@ function attachStream(stream) {
   // No applyConstraints here. Asking an iPhone for a screen-shaped stream makes
   // it satisfy the request by cropping its fixed 4:3 sensor — which is exactly
   // the "normal for one second, then zoomed in" jump. Take the camera's native
-  // frame and let the framing slider decide what to do with it.
+  // frame; the canvas takes that frame's shape instead of the window's.
   vid.addEventListener('loadedmetadata', () => {
     noteSize();
     sizeCaptureSafe();
@@ -635,8 +631,17 @@ async function startCamera() {
   setStatus('requesting camera…');
   try {
     // plainest possible request: nothing here can be refused as unsupported
+    // "ideal" can never be refused, so this is safe to put in the first
+    // request. 1280x720 is a native mode almost everywhere, and on a phone in
+    // portrait the browser hands it back rotated — which is far closer to the
+    // screen's shape than 4:3, so the crop below barely takes anything.
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode }, audio: false
+      video: {
+        facingMode,
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
     });
     attachStream(stream);
   } catch (e) {
@@ -660,6 +665,9 @@ function flipCamera() {
 }
 
 let sizeCaptureSafe = function() {};
+let fitCanvasSafe = function() {};
+let lastVW = window.innerWidth, lastVH = window.innerHeight;
+let inX0 = 0, inY0 = 0, inX1 = 0, inY1 = 0;   // the un-cropped drawing box
 let srcNote = '';
 
 // ── Saving ───────────────────────────────────────────────
@@ -884,10 +892,11 @@ new p5(function(p) {
     _cnv = p.createCanvas(W, H);
     _cnv.parent(document.body);
     _cnv.elt.style.position = 'fixed';
-    _cnv.elt.style.top = '0';
     _cnv.elt.style.left = '0';
+    _cnv.elt.style.top = '0';
     _cnv.elt.style.zIndex = '1';
     layer = p.createGraphics(W, H);
+    fitCanvas();
     if (!window.isSecureContext) {
       setStatus(isTouch
         ? 'not a secure page — phones need https:// for camera access'
@@ -915,16 +924,28 @@ new p5(function(p) {
   }
   sizeCaptureSafe = sizeCapture;
 
-  p.windowResized = function() {
-    const nw = window.innerWidth, nh = window.innerHeight;
-    // Mobile browsers grow and shrink the viewport as the address bar hides.
-    // Rebuilding every buffer for a 60px wobble stutters badly.
-    if (Math.abs(nw - W) < 2 && Math.abs(nh - H) < 90) return;
-    W = nw; H = nh;
+  // ── Canvas geometry ───────────────────────────────────────
+  // The canvas always fills the window. Sizing it to the camera's ratio meant
+  // page-coloured bars whenever the two disagreed, which is not acceptable
+  // here. The frame is fitted by cropping instead — never by stretching.
+  function fitCanvas() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    if (vw === W && vh === H) return;
+    W = vw; H = vh;
     p.resizeCanvas(W, H);
     if (layer) layer.resizeCanvas(W, H);
-    occ = null; bgBuf = null; lumPrev = null;
+    occ = null; bgBuf = null; lumPrev = null; lumBuf = null; rawLum = null;
     sizeCapture();
+  }
+  fitCanvasSafe = fitCanvas;
+
+  p.windowResized = function() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // Mobile browsers grow and shrink the viewport as the address bar hides.
+    // Rebuilding every buffer for a 60px wobble stutters badly.
+    if (Math.abs(vw - lastVW) < 2 && Math.abs(vh - lastVH) < 90) return;
+    lastVW = vw; lastVH = vh;
+    fitCanvas();
   };
 
   p.draw = function() {
@@ -939,7 +960,6 @@ new p5(function(p) {
 
     const thresh  = sv('thresh');
     const bright  = sv('bright');
-    const framing = sv('frame');
     const nLevels = sv('elevels');
     const spread  = sv('espread');
     const samp    = sv('esamp');
@@ -1011,36 +1031,58 @@ new p5(function(p) {
       // mirror only the front camera — a rear-facing shot should not be flipped
       const mirror = usingTestPattern || facingMode === 'user';
 
-      // Framing: 1 = fill the canvas (centre-crop, like a camera app), 0 = fit
-      // the whole frame in with blank margins. Pure fill throws away most of a
-      // 4:3 camera on a tall phone screen, which reads as a heavy zoom-in.
+      // ── Two mappings, one pass. "Fills the screen", "nothing stretched" and
+      //    "nothing magnified" cannot all hold when the camera and the screen
+      //    are different shapes — unless the two layers are treated separately:
+      //
+      //      backdrop → COVER.   Fills the screen edge to edge. It is heavily
+      //                          blurred, so the trim is invisible and there
+      //                          are never blank bars.
+      //      drawing  → CONTAIN. The whole frame at its natural scale, so the
+      //                          contours and the type are neither enlarged
+      //                          nor cut off.
+      //
+      //    Both preserve the source aspect ratio, so nothing is ever squeezed. ──
       const canvasAR = W / H, srcAR = sw / sh;
-      const coverW  = srcAR > canvasAR ? sh * canvasAR : sw;
-      const containW = srcAR > canvasAR ? sw : sh * canvasAR;
-      const useW = containW + (coverW - containW) * framing;
-      const useH = useW / canvasAR;
-      const offX = (sw - useW) / 2, offY = (sh - useH) / 2;
-      const xs = useW / W, ys = useH / H;
+
+      // CONTAIN box, in canvas pixels
+      let drawW = W, drawH = H, boxX = 0, boxY = 0;
+      if (srcAR > canvasAR) { drawH = W / srcAR; boxY = (H - drawH) / 2; }
+      else                  { drawW = H * srcAR; boxX = (W - drawW) / 2; }
+      inX0 = Math.round(boxX); inY0 = Math.round(boxY);
+      inX1 = Math.round(boxX + drawW); inY1 = Math.round(boxY + drawH);
+
+      // COVER window, in source pixels
+      let covW = sw, covH = sh;
+      if (srcAR > canvasAR) covW = sh * canvasAR; else covH = sw / canvasAR;
+      const covX = (sw - covW) / 2, covY = (sh - covH) / 2;
+
+      const cxs = covW / W, cys = covH / H;
+      const dxs = sw / drawW, dys = sh / drawH;
+      const clamp = (v, hi) => v < 0 ? 0 : (v > hi ? hi : v);
 
       for (let y = 0; y < H; y++) {
-        const syf = offY + y * ys;
         const drow = y * W;
-        if (syf < 0 || syf >= sh) {           // margin row — leave it as paper
-          for (let x = 0; x < W; x++) { lumBuf[drow + x] = 1; rawLum[drow + x] = 1; }
-          continue;
-        }
-        const srow = ((syf | 0) * sw);
+        const bsy = clamp((covY + y * cys) | 0, sh - 1) * sw;
+        const insideRow = y >= inY0 && y < inY1;
+        const dsy = insideRow ? clamp(((y - boxY) * dys) | 0, sh - 1) * sw : -1;
+
         for (let x = 0; x < W; x++) {
-          const sxf = offX + x * xs;
-          if (sxf < 0 || sxf >= sw) { lumBuf[drow + x] = 1; rawLum[drow + x] = 1; continue; }
-          let sx = sxf | 0;
-          if (mirror) sx = sw - 1 - sx;
-          const i = (srow + sx) * 4;
-          const l = (pixels[i]*0.299 + pixels[i+1]*0.587 + pixels[i+2]*0.114) / 255 + bright;
-          const v = l < 0 ? 0 : (l > 1 ? 1 : l);
-          lumBuf[drow + x] = v;
-          rawLum[drow + x] = v;   // the backdrop works from this, before the
-                                  // detector's auto-contrast and smoothing
+          let bsx = clamp((covX + x * cxs) | 0, sw - 1);
+          if (mirror) bsx = sw - 1 - bsx;
+          const bi = (bsy + bsx) * 4;
+          const bl = (pixels[bi]*0.299 + pixels[bi+1]*0.587 + pixels[bi+2]*0.114) / 255 + bright;
+          rawLum[drow + x] = bl < 0 ? 0 : (bl > 1 ? 1 : bl);
+
+          if (dsy >= 0 && x >= inX0 && x < inX1) {
+            let dsx = clamp(((x - boxX) * dxs) | 0, sw - 1);
+            if (mirror) dsx = sw - 1 - dsx;
+            const di = (dsy + dsx) * 4;
+            const dl = (pixels[di]*0.299 + pixels[di+1]*0.587 + pixels[di+2]*0.114) / 255 + bright;
+            lumBuf[drow + x] = dl < 0 ? 0 : (dl > 1 ? 1 : dl);
+          } else {
+            lumBuf[drow + x] = 0.5;   // flat — a level crossing cannot occur here
+          }
         }
       }
 
@@ -1049,7 +1091,11 @@ new p5(function(p) {
       //    without this, the levels and the gate both have nothing to bite on. ──
       if (autoContrast) {
         const hist = new Int32Array(256);
-        for (let i = 0; i < W*H; i += 3) hist[(lumBuf[i] * 255) | 0]++;
+        // only the drawing box — the flat margins would drag the percentiles
+        for (let y = inY0; y < inY1; y++) {
+          const row = y * W;
+          for (let x = inX0; x < inX1; x += 3) hist[(lumBuf[row + x] * 255) | 0]++;
+        }
         let tot = 0; for (let i = 0; i < 256; i++) tot += hist[i];
         const loT = tot * 0.02, hiT = tot * 0.98;
         let acc = 0, lo = 0, hi = 255;
