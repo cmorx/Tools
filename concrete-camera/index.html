@@ -197,32 +197,28 @@ button.rec {
   border-top:1px solid var(--hairline-soft); min-height:28px;
 }
 
-/* ── touch devices: fingers need bigger targets than a 9px slider thumb ── */
-@media (pointer: coarse) {
-  input[type=range] { height:26px; background:transparent; }
-  input[type=range]::-webkit-slider-runnable-track {
+/* ── touch layout — applied by class, so ?ui= can override it ── */
+  html.ui-mobile input[type=range] { height:26px; background:transparent; }
+  html.ui-mobile input[type=range]::-webkit-slider-runnable-track {
     height:3px; background:rgba(255,255,255,.22); border-radius:2px;
   }
-  input[type=range]::-webkit-slider-thumb {
+  html.ui-mobile input[type=range]::-webkit-slider-thumb {
     width:22px; height:22px; margin-top:-10px;
     background:#fff; border:none; box-shadow:0 2px 6px rgba(0,0,0,.45);
   }
-  input[type=range]::-moz-range-thumb {
+  html.ui-mobile input[type=range]::-moz-range-thumb {
     width:22px; height:22px; border:none; background:#fff;
   }
-  button { padding:10px 12px; font-size:11px; min-width:76px; }
-  input[type=color] { width:44px !important; height:32px !important; }
-  .ctrl { margin-bottom:14px; }
-  .ctrl-name, .ctrl-val { font-size:11px; }
-  .sec { font-size:9px; padding:12px 0 8px; }
-  textarea { font-size:12px; height:64px; }
-  select { font-size:12px; padding:8px 6px; }
-}
+  html.ui-mobile button { padding:10px 12px; font-size:11px; min-width:76px; }
+  html.ui-mobile input[type=color] { width:44px !important; height:32px !important; }
+  html.ui-mobile .ctrl { margin-bottom:14px; }
+  html.ui-mobile .ctrl-name, html.ui-mobile .ctrl-val { font-size:11px; }
+  html.ui-mobile .sec { font-size:9px; padding:12px 0 8px; }
+  html.ui-mobile textarea { font-size:12px; height:64px; }
+  html.ui-mobile select { font-size:12px; padding:8px 6px; }
 
-/* ── narrow screens: the panel becomes a bottom sheet instead of a sidebar
-      that would cover three quarters of a phone screen ── */
-@media (max-width: 700px) {
-  #overlay {
+
+  html.ui-mobile #overlay {
     top:auto; bottom:0; left:0; right:0;
     width:100%; height:38vh; height:38dvh;
     border-left:none; border-top:1px solid var(--hairline);
@@ -230,23 +226,23 @@ button.rec {
     box-shadow:0 -8px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
     padding-bottom:env(safe-area-inset-bottom);
   }
-  #overlay.hidden { transform:translateY(100%); }
-  #overlay::before {
+  html.ui-mobile #overlay.hidden { transform:translateY(100%); }
+  html.ui-mobile #overlay::before {
     content:''; display:block; width:38px; height:4px; border-radius:2px;
     background:rgba(255,255,255,.32); margin:9px auto 2px; flex:none;
   }
-  #panel-toggle {
+  html.ui-mobile #panel-toggle {
     top:auto; bottom:calc(24px + env(safe-area-inset-bottom));
     right:14px; padding:10px 14px; font-size:10px;
     border-radius:20px;
   }
-  #overlay:not(.hidden) ~ #panel-toggle { bottom:calc(38dvh + 10px); }
-  #overlay:not(.hidden) ~ #capture-bar { bottom:calc(38dvh + 10px); }
-  #capture-bar { display:flex; }
-  /* the shutter bar covers this — no need to repeat it at the bottom of the sheet */
-  #export-sec, #export-row { display:none; }
-  .panel-scroll { padding:6px 14px 14px; -webkit-overflow-scrolling:touch; }
-}
+  html.ui-mobile #overlay:not(.hidden) ~ #panel-toggle { bottom:calc(38dvh + 10px); }
+  html.ui-mobile #overlay:not(.hidden) ~ #capture-bar { bottom:calc(38dvh + 10px); }
+  html.ui-mobile #capture-bar { display:flex; }
+  html.ui-mobile /* the shutter bar covers this — no need to repeat it at the bottom of the sheet */
+  #export-sec, html.ui-mobile #export-row { display:none; }
+  html.ui-mobile .panel-scroll { padding:6px 14px 14px; -webkit-overflow-scrolling:touch; }
+
 </style>
 </head>
 <body>
@@ -438,7 +434,13 @@ button.rec {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 <script>
 let W, H, _cnv, _capture;
-const isTouch = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
+// Layout switch. Width alone was the trigger, which made the tool think it was
+// on a phone whenever it sat in a narrow embed. ?ui=desktop / ?ui=mobile wins.
+const _uiParam = new URLSearchParams(location.search).get('ui');
+const isTouch = _uiParam
+  ? _uiParam === 'mobile'
+  : (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 560);
+document.documentElement.classList.add(isTouch ? 'ui-mobile' : 'ui-desktop');
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let camOn = true;
@@ -667,7 +669,6 @@ function flipCamera() {
 let sizeCaptureSafe = function() {};
 let fitCanvasSafe = function() {};
 let lastVW = window.innerWidth, lastVH = window.innerHeight;
-let inX0 = 0, inY0 = 0, inX1 = 0, inY1 = 0;   // the un-cropped drawing box
 let srcNote = '';
 
 // ── Saving ───────────────────────────────────────────────
@@ -1031,58 +1032,35 @@ new p5(function(p) {
       // mirror only the front camera — a rear-facing shot should not be flipped
       const mirror = usingTestPattern || facingMode === 'user';
 
-      // ── Two mappings, one pass. "Fills the screen", "nothing stretched" and
-      //    "nothing magnified" cannot all hold when the camera and the screen
-      //    are different shapes — unless the two layers are treated separately:
+      // ── ONE mapping for both layers. An earlier version gave the backdrop a
+      //    "cover" fit and the drawing a "contain" fit, so that the drawing
+      //    would never be enlarged. That was wrong: the two are then the same
+      //    scene at different scales and offsets, and the contours no longer
+      //    land on the features underneath them. Whatever the fit is, both
+      //    layers must share it exactly.
       //
-      //      backdrop → COVER.   Fills the screen edge to edge. It is heavily
-      //                          blurred, so the trim is invisible and there
-      //                          are never blank bars.
-      //      drawing  → CONTAIN. The whole frame at its natural scale, so the
-      //                          contours and the type are neither enlarged
-      //                          nor cut off.
-      //
-      //    Both preserve the source aspect ratio, so nothing is ever squeezed. ──
+      //    Cover it is: fills the canvas, aspect preserved, the overhang on the
+      //    long side trimmed — what any camera app does. Blank bars are the
+      //    only alternative, and those are worse here. ──
       const canvasAR = W / H, srcAR = sw / sh;
-
-      // CONTAIN box, in canvas pixels
-      let drawW = W, drawH = H, boxX = 0, boxY = 0;
-      if (srcAR > canvasAR) { drawH = W / srcAR; boxY = (H - drawH) / 2; }
-      else                  { drawW = H * srcAR; boxX = (W - drawW) / 2; }
-      inX0 = Math.round(boxX); inY0 = Math.round(boxY);
-      inX1 = Math.round(boxX + drawW); inY1 = Math.round(boxY + drawH);
-
-      // COVER window, in source pixels
-      let covW = sw, covH = sh;
-      if (srcAR > canvasAR) covW = sh * canvasAR; else covH = sw / canvasAR;
-      const covX = (sw - covW) / 2, covY = (sh - covH) / 2;
-
-      const cxs = covW / W, cys = covH / H;
-      const dxs = sw / drawW, dys = sh / drawH;
-      const clamp = (v, hi) => v < 0 ? 0 : (v > hi ? hi : v);
+      let useW = sw, useH = sh;
+      if (srcAR > canvasAR) useW = sh * canvasAR; else useH = sw / canvasAR;
+      const offX = (sw - useW) / 2, offY = (sh - useH) / 2;
+      const xs = useW / W, ys = useH / H;
 
       for (let y = 0; y < H; y++) {
-        const drow = y * W;
-        const bsy = clamp((covY + y * cys) | 0, sh - 1) * sw;
-        const insideRow = y >= inY0 && y < inY1;
-        const dsy = insideRow ? clamp(((y - boxY) * dys) | 0, sh - 1) * sw : -1;
-
+        let sy = (offY + y * ys) | 0;
+        if (sy < 0) sy = 0; else if (sy >= sh) sy = sh - 1;
+        const srow = sy * sw, drow = y * W;
         for (let x = 0; x < W; x++) {
-          let bsx = clamp((covX + x * cxs) | 0, sw - 1);
-          if (mirror) bsx = sw - 1 - bsx;
-          const bi = (bsy + bsx) * 4;
-          const bl = (pixels[bi]*0.299 + pixels[bi+1]*0.587 + pixels[bi+2]*0.114) / 255 + bright;
-          rawLum[drow + x] = bl < 0 ? 0 : (bl > 1 ? 1 : bl);
-
-          if (dsy >= 0 && x >= inX0 && x < inX1) {
-            let dsx = clamp(((x - boxX) * dxs) | 0, sw - 1);
-            if (mirror) dsx = sw - 1 - dsx;
-            const di = (dsy + dsx) * 4;
-            const dl = (pixels[di]*0.299 + pixels[di+1]*0.587 + pixels[di+2]*0.114) / 255 + bright;
-            lumBuf[drow + x] = dl < 0 ? 0 : (dl > 1 ? 1 : dl);
-          } else {
-            lumBuf[drow + x] = 0.5;   // flat — a level crossing cannot occur here
-          }
+          let sx = (offX + x * xs) | 0;
+          if (sx < 0) sx = 0; else if (sx >= sw) sx = sw - 1;
+          if (mirror) sx = sw - 1 - sx;
+          const i = (srow + sx) * 4;
+          const l = (pixels[i]*0.299 + pixels[i+1]*0.587 + pixels[i+2]*0.114) / 255 + bright;
+          const v = l < 0 ? 0 : (l > 1 ? 1 : l);
+          lumBuf[drow + x] = v;
+          rawLum[drow + x] = v;   // identical geometry — the two layers register
         }
       }
 
@@ -1091,11 +1069,7 @@ new p5(function(p) {
       //    without this, the levels and the gate both have nothing to bite on. ──
       if (autoContrast) {
         const hist = new Int32Array(256);
-        // only the drawing box — the flat margins would drag the percentiles
-        for (let y = inY0; y < inY1; y++) {
-          const row = y * W;
-          for (let x = inX0; x < inX1; x += 3) hist[(lumBuf[row + x] * 255) | 0]++;
-        }
+        for (let i = 0; i < W*H; i += 3) hist[(lumBuf[i] * 255) | 0]++;
         let tot = 0; for (let i = 0; i < 256; i++) tot += hist[i];
         const loT = tot * 0.02, hiT = tot * 0.98;
         let acc = 0, lo = 0, hi = 255;
