@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>concrete camera · final</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; background:#000; overflow:hidden;
+  overscroll-behavior:none; -webkit-text-size-adjust:100%; }
+canvas { touch-action:none; }
+
+#overlay {
+  position:fixed; top:0; right:0; height:100%; width:288px;
+  background:rgba(245,243,238,0.97); border-left:1px solid #ccc;
+  display:flex; flex-direction:column;
+  font-family:'Courier New',monospace; font-size:10px; color:#333;
+  z-index:10; transition:transform .25s ease;
+}
+#overlay.hidden { transform:translateX(288px); }
+
+#panel-toggle {
+  position:fixed; top:12px; right:12px; z-index:20;
+  background:rgba(245,243,238,0.92); border:1px solid #aaa;
+  color:#555; font-family:'Courier New',monospace; font-size:10px;
+  letter-spacing:2px; padding:6px 12px; cursor:pointer;
+  text-transform:uppercase; transition:all .15s;
+}
+#panel-toggle:hover { color:#111; border-color:#333; }
+
+.panel-scroll { flex:1; overflow-y:auto; padding:14px 12px; }
+.panel-scroll::-webkit-scrollbar { width:2px; }
+.panel-scroll::-webkit-scrollbar-thumb { background:#ccc; }
+
+.sec {
+  font-size:8px; letter-spacing:3px; text-transform:uppercase;
+  color:#999; padding:10px 0 7px; border-top:1px solid #ddd;
+  margin-top:4px;
+}
+.sec:first-child { border-top:none; margin-top:0; padding-top:2px; }
+
+.ctrl { margin-bottom:10px; }
+.ctrl-row { display:flex; justify-content:space-between; margin-bottom:3px; }
+.ctrl-name { font-size:9px; color:#666; letter-spacing:.5px; }
+.ctrl-val { font-size:9px; color:#222; font-weight:600; }
+input[type=range] {
+  -webkit-appearance:none; width:100%; height:2px;
+  background:#ccc; cursor:pointer; border-radius:1px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:9px; height:9px;
+  border-radius:50%; background:#333; cursor:pointer;
+}
+input[type=range]:hover::-webkit-slider-thumb { background:#000; }
+
+select {
+  width:100%; background:#fff; border:1px solid #ccc;
+  color:#333; font-family:'Courier New',monospace; font-size:10px;
+  padding:4px 6px; cursor:pointer; outline:none;
+}
+select:focus { border-color:#666; }
+
+textarea {
+  width:100%; background:#fff; border:1px solid #ccc;
+  color:#333; font-family:'Courier New',monospace; font-size:9px;
+  padding:6px; resize:vertical; height:52px; outline:none;
+  line-height:1.5;
+}
+textarea:focus { border-color:#666; }
+
+.btn-row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+button {
+  padding:5px 10px; font-size:9px; letter-spacing:1.5px;
+  font-family:'Courier New',monospace; cursor:pointer;
+  border:1px solid #bbb; background:#eee; color:#666;
+  text-transform:uppercase; transition:all .15s; flex:1; min-width:60px;
+}
+button:hover { color:#000; border-color:#555; background:#e0e0e0; }
+button.on { border-color:#222; color:#111; background:#fff; font-weight:600; }
+button.rec { border-color:#c00; color:#c00; background:#fff3f3; animation:blink .8s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+#mic-meter {
+  height:3px; background:#ddd; margin-top:6px; border-radius:2px; overflow:hidden;
+}
+#mic-bar { height:100%; width:0%; background:#2a7ae2; transition:width .05s; }
+
+#startcam {
+  position:fixed; z-index:40; display:none;
+  left:50%; top:50%; transform:translate(-50%,-50%);
+  padding:20px 28px; font-size:14px; letter-spacing:3px;
+  background:rgba(255,255,255,0.95); color:#111;
+  border:2px solid #111; border-radius:4px;
+  font-family:'Courier New',monospace; font-weight:700;
+  box-shadow:0 4px 20px rgba(0,0,0,.35); min-width:0; flex:none;
+}
+
+/* ── phone capture bar: shutter always within thumb reach ── */
+#capture-bar {
+  position:fixed; z-index:25; display:none; align-items:center; gap:14px;
+  left:16px; bottom:calc(12px + env(safe-area-inset-bottom));
+  transition:bottom .25s ease;
+}
+#shutter {
+  width:62px; height:62px; border-radius:50%;
+  background:rgba(255,255,255,0.92); border:3px solid rgba(0,0,0,0.55);
+  box-shadow:0 2px 10px rgba(0,0,0,.28); cursor:pointer;
+  padding:0; min-width:0; flex:none;
+}
+#shutter:active { transform:scale(0.94); background:#fff; }
+#shutter::after {
+  content:''; display:block; width:44px; height:44px; margin:5px auto;
+  border-radius:50%; background:#222;
+}
+#recbtn {
+  width:52px; height:52px; border-radius:50%; flex:none; min-width:0;
+  background:rgba(255,255,255,0.92); border:2px solid rgba(0,0,0,0.4);
+  color:#c0392b; font-size:10px; letter-spacing:0; font-weight:700;
+  box-shadow:0 2px 10px rgba(0,0,0,.24); padding:0;
+}
+#recbtn.rec { background:#c0392b; color:#fff; border-color:#fff; }
+
+/* ── saved-image sheet: iOS cannot use a download link ── */
+#saveview {
+  position:fixed; inset:0; z-index:70; display:none;
+  background:rgba(20,20,20,0.94); flex-direction:column;
+  align-items:center; justify-content:center; gap:14px; padding:20px;
+}
+#saveview img, #saveview video { max-width:100%; max-height:64vh; box-shadow:0 4px 24px rgba(0,0,0,.5); }
+#saveview img, #saveview video { display:none; }
+.save-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+.save-actions button { flex:none; padding:12px 18px; font-size:12px; }
+#save-share { background:#fff; border-color:#111; color:#111; font-weight:700; }
+#saveview p {
+  color:#eee; font-family:'Courier New',monospace; font-size:12px;
+  letter-spacing:1px; text-align:center; line-height:1.6;
+}
+#saveview button { max-width:220px; }
+
+#errbox {
+  position:fixed; top:0; left:0; right:0; z-index:60; display:none;
+  background:#c0392b; color:#fff; font-family:'Courier New',monospace;
+  font-size:11px; line-height:1.45; padding:10px 14px;
+  padding-top:calc(10px + env(safe-area-inset-top));
+  white-space:pre-wrap; word-break:break-word; max-height:45vh; overflow:auto;
+}
+
+#status-bar {
+  padding:8px 12px; font-size:9px; color:#888; letter-spacing:1px;
+  border-top:1px solid #ddd; min-height:28px;
+}
+
+/* ── touch devices: fingers need bigger targets than a 9px slider thumb ── */
+@media (pointer: coarse) {
+  input[type=range] { height:26px; background:transparent; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height:3px; background:#c4c4c4; border-radius:2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    width:22px; height:22px; margin-top:-10px;
+    background:#333; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.3);
+  }
+  input[type=range]::-moz-range-thumb {
+    width:22px; height:22px; border:2px solid #fff; background:#333;
+  }
+  button { padding:10px 12px; font-size:11px; min-width:76px; }
+  input[type=color] { width:44px !important; height:32px !important; }
+  .ctrl { margin-bottom:14px; }
+  .ctrl-name, .ctrl-val { font-size:11px; }
+  .sec { font-size:9px; padding:12px 0 8px; }
+  textarea { font-size:12px; height:64px; }
+  select { font-size:12px; padding:8px 6px; }
+}
+
+/* ── narrow screens: the panel becomes a bottom sheet instead of a sidebar
+      that would cover three quarters of a phone screen ── */
+@media (max-width: 700px) {
+  #overlay {
+    top:auto; bottom:0; left:0; right:0;
+    width:100%; height:38vh; height:38dvh;
+    border-left:none; border-top:1px solid #bbb;
+    border-radius:12px 12px 0 0;
+    box-shadow:0 -4px 20px rgba(0,0,0,.18);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  #overlay.hidden { transform:translateY(100%); }
+  #overlay::before {
+    content:''; display:block; width:38px; height:4px; border-radius:2px;
+    background:#ccc; margin:8px auto 2px; flex:none;
+  }
+  #panel-toggle {
+    top:auto; bottom:calc(24px + env(safe-area-inset-bottom));
+    right:14px; padding:10px 14px; font-size:10px;
+    border-radius:20px; background:rgba(245,243,238,0.9);
+  }
+  #overlay:not(.hidden) ~ #panel-toggle { bottom:calc(38dvh + 10px); }
+  #overlay:not(.hidden) ~ #capture-bar { bottom:calc(38dvh + 10px); }
+  #capture-bar { display:flex; }
+  /* the shutter bar covers this — no need to repeat it at the bottom of the sheet */
+  #export-sec, #export-row { display:none; }
+  .panel-scroll { padding:6px 14px 14px; -webkit-overflow-scrolling:touch; }
+}
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <div class="panel-scroll">
+
+    <div class="sec">CAMERA</div>
+    <div class="btn-row">
+      <button id="btn-cam" class="on" onclick="toggleCam()">Camera ON</button>
+      <button id="btn-facing" onclick="flipCamera()">⟳ Front</button>
+    </div>
+
+
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">framing · fit ← → fill</span><span class="ctrl-val" id="v-frame">1.00</span></div>
+      <input type="range" id="frame" min="0" max="1" step="0.01" value="1">
+    </div>
+
+    <div class="sec">IMAGE</div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">detect level</span><span class="ctrl-val" id="v-thresh">0.50</span></div>
+      <input type="range" id="thresh" min="0.05" max="0.95" step="0.01" value="0.50">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">brightness offset</span><span class="ctrl-val" id="v-bright">0.00</span></div>
+      <input type="range" id="bright" min="-0.4" max="0.4" step="0.01" value="0">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">detail layers</span><span class="ctrl-val" id="v-elevels">5</span></div>
+      <input type="range" id="elevels" min="1" max="12" step="1" value="5">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">level range</span><span class="ctrl-val" id="v-espread">0.85</span></div>
+      <input type="range" id="espread" min="0.05" max="0.98" step="0.01" value="0.85">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">resolution</span><span class="ctrl-val" id="v-esamp">3</span></div>
+      <input type="range" id="esamp" min="1" max="8" step="1" value="3">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">noise gate</span><span class="ctrl-val" id="v-egate">0.020</span></div>
+      <input type="range" id="egate" min="0" max="0.3" step="0.005" value="0.02">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">stability</span><span class="ctrl-val" id="v-etemp">0.65</span></div>
+      <input type="range" id="etemp" min="0" max="0.95" step="0.05" value="0.65">
+    </div>
+    <div class="btn-row">
+      <button id="btn-auto" class="on" onclick="toggleAuto()">Auto contrast ON</button>
+    </div>
+
+    <div class="sec">BACKGROUND</div>
+    <div class="btn-row">
+      <button id="btn-bg" class="on" onclick="toggleBg()">Photocopy ON</button>
+      <button id="btn-lines" onclick="toggleLines()">Show contours</button>
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">softness</span><span class="ctrl-val" id="v-bgblur">2</span></div>
+      <input type="range" id="bgblur" min="0" max="30" step="1" value="2">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">contrast</span><span class="ctrl-val" id="v-bgcon">0.60</span></div>
+      <input type="range" id="bgcon" min="0" max="1" step="0.01" value="0.6">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">grain</span><span class="ctrl-val" id="v-bggrain">0.15</span></div>
+      <input type="range" id="bggrain" min="0" max="0.6" step="0.01" value="0.15">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">ink density</span><span class="ctrl-val" id="v-bgamt">0.55</span></div>
+      <input type="range" id="bgamt" min="0" max="1" step="0.01" value="0.55">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row" style="align-items:center;">
+        <span class="ctrl-name">toner</span>
+        <input type="color" id="col-copy" value="#5a5f66" style="width:36px;height:22px;border:1px solid #bbb;border-radius:3px;cursor:pointer;padding:1px;">
+      </div>
+    </div>
+
+    <div class="sec">EDGE ZONE</div>
+    <div class="btn-row">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">font size</span><span class="ctrl-val" id="v-esize">18</span></div>
+      <input type="range" id="esize" min="10" max="96" step="1" value="18">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">line spacing (px)</span><span class="ctrl-val" id="v-elgap">18</span></div>
+      <input type="range" id="elgap" min="3" max="60" step="1" value="18">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">smoothing</span><span class="ctrl-val" id="v-esmooth">8</span></div>
+      <input type="range" id="esmooth" min="0" max="30" step="1" value="8">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">letter spacing</span><span class="ctrl-val" id="v-espacing">1.00</span></div>
+      <input type="range" id="espacing" min="0.6" max="3" step="0.01" value="1.0">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">wobble</span><span class="ctrl-val" id="v-echaos">0.15</span></div>
+      <input type="range" id="echaos" min="0" max="1" step="0.01" value="0.15">
+    </div>
+    <div class="btn-row">
+      <button id="btn-phrase" class="on" onclick="togglePhrase()">One phrase per line</button>
+    </div>
+    <div class="btn-row">
+      <button id="btn-upright" class="on" onclick="toggleUpright()">Keep upright</button>
+    </div>
+
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">edge text</span></div>
+      <textarea id="etxt">In the language of statistics an outlier is a stray data point present within the sample yet drifting from expectation. In the context of industrial production it names a case no design had accounted for. In sociology it marks a misplaced phenomenon. In everyday life sometimes it is simply an improvisation.</textarea>
+    </div>
+
+    <div class="sec">FONT</div>
+    <div class="ctrl">
+      <select id="fontsel">
+        <option value="'Courier New',monospace">Courier New</option>
+        <option value="monospace">Monospace</option>
+        <option value="'Times New Roman',serif">Times New Roman</option>
+        <option value="Georgia,serif">Georgia</option>
+        <option value="Arial,sans-serif">Arial</option>
+        <option value="'Helvetica Neue',sans-serif">Helvetica Neue</option>
+        <option value="'Lucida Console',monospace">Lucida Console</option>
+        <option value="Garamond,serif">Garamond</option>
+      </select>
+    </div>
+
+    <div class="sec">COLORS</div>
+    <div class="ctrl">
+      <div class="ctrl-row" style="align-items:center;">
+        <span class="ctrl-name">paper</span>
+        <input type="color" id="col-bg" value="#ffffff" style="width:36px;height:22px;border:1px solid #bbb;border-radius:3px;cursor:pointer;padding:1px;">
+        <span class="ctrl-name">ink</span>
+        <input type="color" id="col-edge" value="#000000" style="width:36px;height:22px;border:1px solid #bbb;border-radius:3px;cursor:pointer;padding:1px;">
+      </div>
+    </div>
+
+    <div class="sec">CAPTURE</div>
+    <div class="btn-row">
+      <button id="btn-freeze" onclick="toggleFreeze()">Freeze OFF</button>
+    </div>
+
+    <div class="sec">DOODLE</div>
+    <div class="btn-row">
+      <button id="btn-doodle" class="on" onclick="toggleDoodle()">Doodle ON</button>
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">doodle ← → text</span><span class="ctrl-val" id="v-dbal">0.50</span></div>
+      <input type="range" id="dbal" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">stroke weight</span><span class="ctrl-val" id="v-dw">1.00</span></div>
+      <input type="range" id="dw" min="0.25" max="5" step="0.25" value="1">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">roughness</span><span class="ctrl-val" id="v-drough">1.50</span></div>
+      <input type="range" id="drough" min="0" max="8" step="0.1" value="1.5">
+    </div>
+
+    <div class="sec">GLOW</div>
+    <div class="btn-row">
+      <button id="btn-glow" onclick="toggleGlow()">Glow OFF</button>
+    </div>
+    <div class="ctrl">
+      <select id="glowmode">
+        <option value="neon">neon — clean halo, any background</option>
+        <option value="bloom">bloom — overexposed, dark bg only</option>
+      </select>
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">radius</span><span class="ctrl-val" id="v-grad">14</span></div>
+      <input type="range" id="grad" min="1" max="60" step="1" value="14">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">intensity</span><span class="ctrl-val" id="v-gint">0.70</span></div>
+      <input type="range" id="gint" min="0.05" max="1" step="0.01" value="0.7">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row"><span class="ctrl-name">spread</span><span class="ctrl-val" id="v-gpass">2</span></div>
+      <input type="range" id="gpass" min="1" max="4" step="1" value="2">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-row" style="align-items:center;">
+        <span class="ctrl-name">glow color</span>
+        <input type="color" id="col-glow" value="#38e8ff" style="width:36px;height:22px;border:1px solid #bbb;border-radius:3px;cursor:pointer;padding:1px;">
+      </div>
+    </div>
+
+    <div class="sec" id="export-sec">EXPORT</div>
+    <div class="btn-row" id="export-row">
+      <button onclick="doSave()">Save PNG</button>
+      <button id="btn-rec" onclick="toggleRecord()">● Rec 10s</button>
+    </div>
+
+  </div>
+  <div id="status-bar">ready</div>
+</div>
+
+<button id="startcam">START CAMERA</button>
+
+<div id="capture-bar">
+  <button id="shutter" onclick="doSave()" aria-label="save PNG"></button>
+  <button id="recbtn" onclick="toggleRecord()">REC</button>
+</div>
+
+<div id="saveview">
+  <img id="saveimg" alt="">
+  <video id="savevid" playsinline controls></video>
+  <p id="savehint"></p>
+  <div class="save-actions">
+    <button id="save-share" onclick="shareResult()">SAVE</button>
+    <button id="save-dl" onclick="downloadResult()">DOWNLOAD</button>
+    <button onclick="closeSave()">CLOSE</button>
+  </div>
+</div>
+
+<button id="panel-toggle" onclick="togglePanel()">CONTROLS ◂</button>
+<div id="errbox" onclick="this.style.display='none'"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script>
+let W, H, _cnv, _capture;
+const isTouch = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let camOn = true;
+let facingMode = 'user';
+let isRecording = false, mediaRecorder, recordChunks = [];
+let glowOn = false;
+let layer = null;               // offscreen buffer: all text is drawn here first
+let panelVisible = true;
+let glyphCount = 0;
+let cachedPaths = null;
+let lumBuf = null, lumPrev = null, rawLum = null;
+let acLo = null, acHi = null;
+let doodleCount = 0;
+let frozen = false;
+let phraseMode = true;
+let bgOn = true;
+let showLines = false;
+let bgBuf = null, bgImg = null, bgW = 0, bgH = 0, bgLut = null, bgGrainLut = null;
+let usingTestPattern = true;
+let camError = '';
+const levelList = [];
+let doodleOn = true;
+let autoContrast = true;
+let keptCount = 0;
+let upright = true;
+let introFrame = 0;
+const INTRO_DURATION = 72; // ~2.4s at 30fps, 24 frames per count
+
+function sv(id) { return parseFloat(document.getElementById(id).value); }
+
+// ── Panel toggle ──────────────────────────────────────────
+function togglePanel() {
+  panelVisible = !panelVisible;
+  document.getElementById('overlay').classList.toggle('hidden', !panelVisible);
+  document.getElementById('panel-toggle').textContent = panelVisible ? 'CONTROLS ◂' : 'CONTROLS ▸';
+}
+
+// ── Zone toggles ─────────────────────────────────────────
+
+// ── Background photocopy ──
+function toggleBg() {
+  bgOn = !bgOn;
+  const btn = document.getElementById('btn-bg');
+  btn.textContent = 'Photocopy ' + (bgOn ? 'ON' : 'OFF');
+  btn.classList.toggle('on', bgOn);
+}
+function toggleLines() {
+  showLines = !showLines;
+  document.getElementById('btn-lines').classList.toggle('on', showLines);
+}
+
+// ── Phrase mode: one phrase per contour, or loop the text to fill it ──
+function togglePhrase() {
+  phraseMode = !phraseMode;
+  const btn = document.getElementById('btn-phrase');
+  btn.textContent = phraseMode ? 'One phrase per line' : 'Repeat to fill';
+  btn.classList.toggle('on', phraseMode);
+}
+
+// ── Freeze: stop updating the detection so the drawing holds still ──
+function toggleFreeze() {
+  frozen = !frozen;
+  const btn = document.getElementById('btn-freeze');
+  btn.textContent = 'Freeze ' + (frozen ? 'ON' : 'OFF');
+  btn.classList.toggle('on', frozen);
+}
+
+// ── Doodle toggle ──
+function toggleDoodle() {
+  doodleOn = !doodleOn;
+  const btn = document.getElementById('btn-doodle');
+  btn.textContent = 'Doodle ' + (doodleOn ? 'ON' : 'OFF');
+  btn.classList.toggle('on', doodleOn);
+}
+
+// ── Auto contrast toggle ──
+function toggleAuto() {
+  autoContrast = !autoContrast;
+  const btn = document.getElementById('btn-auto');
+  btn.textContent = 'Auto contrast ' + (autoContrast ? 'ON' : 'OFF');
+  btn.classList.toggle('on', autoContrast);
+}
+
+// ── Upright toggle: flip glyphs that would run upside-down ──
+function toggleUpright() {
+  upright = !upright;
+  const btn = document.getElementById('btn-upright');
+  btn.textContent = upright ? 'Keep upright' : 'Follow direction';
+  btn.classList.toggle('on', upright);
+}
+
+// ── Glow toggle ──────────────────────────────────────────
+function toggleGlow() {
+  glowOn = !glowOn;
+  const btn = document.getElementById('btn-glow');
+  btn.textContent = 'Glow ' + (glowOn ? 'ON' : 'OFF');
+  btn.classList.toggle('on', glowOn);
+}
+
+// ── Camera ───────────────────────────────────────────────
+// ── Camera ───────────────────────────────────────────────
+// One implementation, used for the first start, for the on/off button and for
+// flipping. There used to be two — p5's createCapture on startup and a hand
+// written stand-in for flipping — and they drifted apart. p5's version also
+// swallows getUserMedia errors, so a refused permission looked identical to a
+// working camera showing nothing.
+
+function camFailure(e) {
+  const name = (e && e.name) || 'Error';
+  const help = {
+    NotAllowedError:      'permission denied — allow camera access for this site, then reload',
+    NotFoundError:        'no camera found on this device',
+    NotReadableError:     'the camera is being used by another app — close it and reload',
+    OverconstrainedError: 'the requested camera settings are not supported here',
+    SecurityError:        'this page is not a secure context — the address must be https://',
+    AbortError:           'the camera was interrupted while starting'
+  }[name] || ((e && e.message) || 'unknown error');
+  setStatus('camera: ' + name);
+  if (window.showError) window.showError('CAMERA FAILED\n' + name + '\n' + help);
+  const bar = document.getElementById('startcam');
+  if (bar) { bar.style.display = 'block'; bar.textContent = 'RETRY CAMERA'; }
+}
+
+function attachStream(stream) {
+  if (_capture) { try { _capture.stop(); } catch(e){} try { _capture.remove(); } catch(e){} }
+
+  const vid = document.createElement('video');
+  vid.srcObject = stream;
+  vid.autoplay = true;
+  vid.muted = true;
+  vid.playsInline = true;
+  vid.setAttribute('playsinline', '');
+  vid.setAttribute('webkit-playsinline', '');
+  vid.style.display = 'none';
+  document.body.appendChild(vid);
+  vid.play().catch(() => {});
+
+  const c = document.createElement('canvas');
+  const cx = c.getContext('2d', { willReadFrequently: true });
+
+  _capture = {
+    elt: vid,
+    width: 0, height: 0,
+    _cap: isTouch ? 540 : 900,
+    _stream: stream,
+    // The working resolution only — never the aspect ratio. Caching the frame
+    // size and refreshing it on 'loadedmetadata' was the cause of the stretch:
+    // when a track changes resolution the element fires 'resize', not
+    // 'loadedmetadata', so the cached size drifted away from the real one and
+    // every frame got squeezed into the wrong box.
+    size(w2) { this._cap = Math.max(64, Math.round(w2)); },
+    loadPixels() {
+      const vw = vid.videoWidth, vh = vid.videoHeight;
+      if (!vw || !vh) { this.width = 0; this.height = 0; return; }
+      const scale = Math.min(1, this._cap / Math.max(vw, vh));
+      const cw = Math.max(2, Math.round(vw * scale));
+      const ch = Math.max(2, Math.round(vh * scale));
+      if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+      cx.drawImage(vid, 0, 0, cw, ch);   // same aspect as the source, always
+      this.width = cw; this.height = ch;
+      this.pixels = cx.getImageData(0, 0, cw, ch).data;
+    },
+    play() { vid.play().catch(() => {}); },
+    pause() { vid.pause(); },
+    stop() { try { stream.getTracks().forEach(t => t.stop()); } catch(e){} },
+    remove() { vid.remove(); }
+  };
+
+  const noteSize = () => {
+    srcNote = (vid.videoWidth || 0) + 'x' + (vid.videoHeight || 0);
+  };
+  vid.addEventListener('resize', noteSize);
+
+  // No applyConstraints here. Asking an iPhone for a screen-shaped stream makes
+  // it satisfy the request by cropping its fixed 4:3 sensor — which is exactly
+  // the "normal for one second, then zoomed in" jump. Take the camera's native
+  // frame and let the framing slider decide what to do with it.
+  vid.addEventListener('loadedmetadata', () => {
+    noteSize();
+    sizeCaptureSafe();
+  });
+
+  sizeCaptureSafe();
+  const b = document.getElementById('startcam');
+  if (b) b.style.display = 'none';
+  setStatus('camera: ' + (facingMode === 'user' ? 'front' : 'back'));
+}
+
+async function startCamera() {
+  if (!window.isSecureContext) {
+    camFailure({ name: 'SecurityError' });
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    camFailure({ name: 'Error', message: 'this browser has no getUserMedia' });
+    return;
+  }
+  setStatus('requesting camera…');
+  try {
+    // plainest possible request: nothing here can be refused as unsupported
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode }, audio: false
+    });
+    attachStream(stream);
+  } catch (e) {
+    camFailure(e);
+  }
+}
+
+function toggleCam() {
+  camOn = !camOn;
+  const btn = document.getElementById('btn-cam');
+  btn.textContent = 'Camera ' + (camOn ? 'ON' : 'OFF');
+  btn.classList.toggle('on', camOn);
+  if (!_capture && camOn) { startCamera(); return; }
+  if (_capture) { camOn ? _capture.play() : _capture.pause(); }
+}
+
+function flipCamera() {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  document.getElementById('btn-facing').textContent = '⟳ ' + (facingMode === 'user' ? 'Front' : 'Back');
+  startCamera();
+}
+
+let sizeCaptureSafe = function() {};
+let srcNote = '';
+
+// ── Saving ───────────────────────────────────────────────
+// One result sheet for both a still and a clip. iOS ignores the download
+// attribute, and the previous fallback navigated the page away to a blob URL,
+// which threw the whole sketch away. The system share sheet is the route that
+// actually reaches Photos.
+let resultURL = null, resultFile = null, resultName = '';
+
+function showResult(blob, name, kind) {
+  if (resultURL) URL.revokeObjectURL(resultURL);
+  resultURL = URL.createObjectURL(blob);
+  resultName = name;
+  try { resultFile = new File([blob], name, { type: blob.type }); }
+  catch (e) { resultFile = null; }
+
+  const img = document.getElementById('saveimg');
+  const vid = document.getElementById('savevid');
+  img.style.display = 'none'; vid.style.display = 'none';
+  img.src = ''; vid.removeAttribute('src');
+
+  if (kind === 'video') { vid.src = resultURL; vid.style.display = 'block'; }
+  else { img.src = resultURL; img.style.display = 'block'; }
+
+  // A plain download link is the better route wherever it works. The share
+  // sheet is only for iOS, where the download attribute is ignored — desktop
+  // Chrome reports canShare() as true and then does nothing visible.
+  const canDownload = typeof document.createElement('a').download !== 'undefined' && !isIOS;
+  const canShare = !canDownload &&
+    !!(navigator.canShare && resultFile && navigator.canShare({ files: [resultFile] }));
+  document.getElementById('save-share').style.display = canShare ? '' : 'none';
+  document.getElementById('save-dl').style.display = canDownload ? '' : 'none';
+
+  const kindLabel = kind === 'video' ? (name.endsWith('.mp4') ? 'MP4' : 'WebM') : 'PNG';
+  document.getElementById('savehint').textContent =
+    canShare ? '点 SAVE → 存储图像 / 存储视频\ntap SAVE, then Save to Photos'
+             : (canDownload ? kindLabel + ' · ' + name
+                            : '长按上面的内容保存\nlong-press to save');
+
+  document.getElementById('saveview').style.display = 'flex';
+}
+
+async function shareResult() {
+  if (!resultFile) { setStatus('nothing to save'); return; }
+  if (!navigator.share) { setStatus('sharing is not available — use DOWNLOAD'); return; }
+  try {
+    await navigator.share({ files: [resultFile] });
+    setStatus('saved');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;      // the user closed the sheet
+    setStatus('save failed: ' + ((e && e.name) || 'unknown') + ' — try DOWNLOAD');
+    document.getElementById('save-dl').style.display = '';
+  }
+}
+
+function downloadResult() {
+  if (!resultURL) return;
+  const a = document.createElement('a');
+  a.href = resultURL;
+  a.download = resultName;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setStatus('saved');
+}
+
+function closeSave() {
+  document.getElementById('saveview').style.display = 'none';
+  const img = document.getElementById('saveimg');
+  const vid = document.getElementById('savevid');
+  img.src = ''; vid.pause(); vid.removeAttribute('src');
+  if (resultURL) { URL.revokeObjectURL(resultURL); resultURL = null; }
+  resultFile = null;
+}
+
+function doSave() {
+  if (!_cnv) { setStatus('canvas not ready'); return; }
+  const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  const name = 'concrete_' + ts + '.png';
+  try {
+    if (_cnv.elt.toBlob) {
+      _cnv.elt.toBlob(blob => {
+        if (!blob) { setStatus('could not render the image'); return; }
+        showResult(blob, name, 'image');
+        setStatus('image ready');
+      }, 'image/png');
+    } else {
+      const dataURL = _cnv.elt.toDataURL('image/png');
+      fetch(dataURL).then(r => r.blob()).then(b => showResult(b, name, 'image'));
+    }
+  } catch (e) {
+    setStatus('save failed: ' + (e.name || e.message));
+    if (window.showError) window.showError('doSave: ' + (e.message || e));
+  }
+}
+
+function toggleRecord() {
+  if (isRecording) return;
+  if (!_cnv) { setStatus('canvas not ready'); return; }
+  const setRecUI = (label, short, on) => {
+    const b1 = document.getElementById('btn-rec');
+    const b2 = document.getElementById('recbtn');
+    if (b1) { b1.textContent = label; b1.classList.toggle('rec', on); }
+    if (b2) { b2.textContent = short; b2.classList.toggle('rec', on); }
+  };
+  if (typeof MediaRecorder === 'undefined' || !_cnv.elt.captureStream) {
+    setStatus('video recording is not supported in this browser — use PNG');
+    return;
+  }
+  let stream;
+  try { stream = _cnv.elt.captureStream(30); }
+  catch (e) { setStatus('recording unavailable here — use PNG'); return; }
+  recordChunks = [];
+  // mp4 first. This list used to start with webm, so webm always matched and
+  // mp4 was never reached — Chrome 130+ can mux mp4 directly.
+  let mimeType = '';
+  [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=h264',
+    'video/webm;codecs=vp9',
+    'video/webm'
+  ].forEach(m => {
+    if (!mimeType && MediaRecorder.isTypeSupported(m)) mimeType = m;
+  });
+  try { mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {}); }
+  catch (e) { setStatus('recording unavailable here — use PNG'); return; }
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    if (ext === 'webm') {
+      setStatus('this browser can only record webm — playable in Chrome/Firefox, or convert to mp4');
+    }
+    const blob = new Blob(recordChunks, { type: mimeType || 'video/webm' });
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    showResult(blob, 'concrete_' + ts + '.' + ext, 'video');
+    isRecording = false;
+    setRecUI('● Rec 10s', 'REC', false);
+    setStatus('video saved · ' + ext);
+  };
+  mediaRecorder.start(); isRecording = true;
+  let t = 10;
+  setRecUI('■ ' + t + 's…', t + 's', true);
+  setStatus('recording 10s…');
+  const iv = setInterval(() => {
+    t--; setRecUI('■ ' + t + 's…', t + 's', true);
+    if (t <= 0) { clearInterval(iv); mediaRecorder.stop(); }
+  }, 1000);
+}
+
+function setStatus(msg) { document.getElementById('status-bar').textContent = msg; }
+
+// ── Slider value display wiring ───────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('input[type=range]').forEach(el => {
+    const vEl = document.getElementById('v-' + el.id);
+    if (!vEl) return;
+    el.addEventListener('input', () => {
+      const step = parseFloat(el.step);
+      vEl.textContent = step < 1 ? parseFloat(el.value).toFixed(2) : parseInt(el.value);
+    });
+  });
+});
+
+// ── on a phone: fewer detector cells, steadier contours, larger type.
+//    Same code path as desktop, just a cheaper starting point. ──
+if (isTouch) {
+  window.addEventListener('DOMContentLoaded', () => {
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = v;
+      const lbl = document.getElementById('v-' + id);
+      if (lbl) lbl.textContent = parseFloat(el.step) < 1 ? (+v).toFixed(2) : v;
+    };
+    set('esamp', 4);      // coarser detection grid
+    set('elevels', 4);    // fewer contour layers
+    set('etemp', 0.75);   // steadier against handshake
+    set('esize', 22);     // readable type on a small screen
+    set('elgap', 24);     // more air between lines
+    document.getElementById('overlay').classList.add('hidden');
+    panelVisible = false;
+    document.getElementById('panel-toggle').textContent = 'CONTROLS \u25b8';
+  });
+}
+
+// ── surface errors on screen. Phones have no console, so a thrown exception
+//    would otherwise just leave a frozen or blank canvas. ──
+(function () {
+  const box = () => document.getElementById('errbox');
+  let count = 0;
+  function show(msg) {
+    const el = box();
+    if (!el) return;
+    count++;
+    if (count > 6) return;
+    el.style.display = 'block';
+    el.textContent += (el.textContent ? '\n\n' : '') + msg + '\n(tap to dismiss)';
+  }
+  window.addEventListener('error', e => {
+    show('ERROR: ' + (e.message || e.type) +
+         (e.filename ? '\n' + String(e.filename).split('/').pop() + ':' + e.lineno : ''));
+  });
+  window.addEventListener('unhandledrejection', e => {
+    show('PROMISE: ' + ((e.reason && e.reason.message) || e.reason));
+  });
+  window.showError = show;
+})();
+
+// on a phone, tapping the picture closes the control sheet
+if (isTouch) {
+  document.addEventListener('pointerdown', e => {
+    if (panelVisible && e.target && e.target.tagName === 'CANVAS') togglePanel();
+  });
+}
+
+// ── p5 sketch ────────────────────────────────────────────
+new p5(function(p) {
+
+  p.setup = function() {
+    W = window.innerWidth; H = window.innerHeight;
+    // Phones report a device pixel ratio of 2–3. p5 would then make the canvas
+    // 4–9x the pixels, which both wrecks the frame rate and desyncs the pixel
+    // indices this sketch uses everywhere.
+    p.pixelDensity(1);
+    _cnv = p.createCanvas(W, H);
+    _cnv.parent(document.body);
+    _cnv.elt.style.position = 'fixed';
+    _cnv.elt.style.top = '0';
+    _cnv.elt.style.left = '0';
+    _cnv.elt.style.zIndex = '1';
+    layer = p.createGraphics(W, H);
+    if (!window.isSecureContext) {
+      setStatus(isTouch
+        ? 'not a secure page — phones need https:// for camera access'
+        : 'file:// page — the browser will refuse camera access. Serve over http://localhost.');
+    }
+    // Touch devices only: request the camera from a tap. Safari on iOS is far
+    // more reliable when getUserMedia happens inside a gesture, and a visible
+    // button beats a prompt that silently never appears.
+    if (isTouch) {
+      const b = document.getElementById('startcam');
+      if (b) { b.style.display = 'block'; b.onclick = () => { b.textContent = 'STARTING…'; startCamera(); }; }
+      setStatus('tap START CAMERA');
+    } else {
+      startCamera();
+    }
+  };
+
+
+
+  // Only a resolution budget now — the aspect ratio is taken from the live
+  // video on every frame, so it can never drift.
+  function sizeCapture() {
+    if (!_capture || typeof _capture.size !== 'function') return;
+    _capture.size(Math.min(Math.max(W, H), isTouch ? 540 : 900));
+  }
+  sizeCaptureSafe = sizeCapture;
+
+  p.windowResized = function() {
+    const nw = window.innerWidth, nh = window.innerHeight;
+    // Mobile browsers grow and shrink the viewport as the address bar hides.
+    // Rebuilding every buffer for a 60px wobble stutters badly.
+    if (Math.abs(nw - W) < 2 && Math.abs(nh - H) < 90) return;
+    W = nw; H = nh;
+    p.resizeCanvas(W, H);
+    if (layer) layer.resizeCanvas(W, H);
+    occ = null; bgBuf = null; lumPrev = null;
+    sizeCapture();
+  };
+
+  p.draw = function() {
+    if (introFrame < INTRO_DURATION) {
+      drawIntro(p);
+      introFrame++;
+      return;
+    }
+    const bgCol   = document.getElementById('col-bg').value;
+    const edgeCol = document.getElementById('col-edge').value;
+    const font    = document.getElementById('fontsel').value;
+
+    const thresh  = sv('thresh');
+    const bright  = sv('bright');
+    const framing = sv('frame');
+    const nLevels = sv('elevels');
+    const spread  = sv('espread');
+    const samp    = sv('esamp');
+    const preBlur = 1;
+    const gate    = sv('egate');
+    const bgBlur   = sv('bgblur');
+    const bgLev    = thresh;   // the photocopy curve rides the same level as the detector
+    const bgCon    = sv('bgcon');
+    const bgGrain  = sv('bggrain');
+    const bgAmt    = sv('bgamt');
+    const copyCol  = document.getElementById('col-copy').value;
+    const detEvery= 3;
+    const temporal = sv('etemp');
+    const dBal    = sv('dbal');
+    const dMax    = 200;
+    const dWeight = sv('dw');
+    const dRough  = sv('drough');
+    const dOver   = 0.15;
+    const edgeSz    = sv('esize');
+    // The text/doodle split scales with the type. It used to be a fixed pixel
+    // threshold, so changing the font size silently shifted the balance.
+    const textMin   = edgeSz * (30 - 28 * dBal);
+    const maxPaths  = 60;
+    const edgeLen   = 12;
+    const edgeBias  = 0.5;
+    const lineGap   = sv('elgap');
+    const glyphGap  = 1.1;
+    const smoothWin = sv('esmooth');
+    const letterSpc = sv('espacing');
+    const baseOff   = 0;
+    const echaos    = sv('echaos');
+
+    const glowCol  = document.getElementById('col-glow').value;
+    const glowMode = document.getElementById('glowmode').value;
+    const glowRad  = sv('grad');
+    const glowInt  = sv('gint');
+    const glowPass = sv('gpass');
+
+
+    const edgeTxt = document.getElementById('etxt').value || 'edge';
+
+    // ── background ──
+    p.background(bgCol);
+
+    // ── detection runs on a throttle: contours don't need 60fps, text does ──
+    const needDetect = !frozen && ((p.frameCount % Math.max(1, Math.round(detEvery)) === 0) || !cachedPaths);
+
+    if (needDetect) {
+      // ── source pixels. The capture no longer matches the canvas size, so
+      //    sample across with a scale factor instead of assuming 1:1. This is
+      //    also what stops the picture coming out as a zoomed-in crop on any
+      //    device where the two resolutions differ. ──
+      let pixels = null, sw = 0, sh = 0;
+      usingTestPattern = true;
+      try {
+        // Ask the capture to grab a frame FIRST, then judge the result. The
+        // gate used to be `_capture.width > 4`, but width is only assigned
+        // inside loadPixels — so it stayed 0, the gate never opened, and the
+        // frame was never grabbed. The camera was running the whole time.
+        if (camOn && _capture) {
+          _capture.loadPixels();
+          sw = _capture.width | 0; sh = _capture.height | 0;
+          if (sw > 4 && sh > 4 && _capture.pixels && _capture.pixels.length >= sw * sh * 4) {
+            pixels = _capture.pixels;
+            usingTestPattern = false;
+          }
+        }
+      } catch(e) { camError = e.message || 'capture failed'; }
+      if (!pixels) { pixels = testPattern(); sw = W; sh = H; }
+
+      if (!lumBuf || lumBuf.length !== W*H) { lumBuf = new Float32Array(W*H); lumPrev = null; }
+      if (!rawLum || rawLum.length !== W*H) rawLum = new Float32Array(W*H);
+
+      // mirror only the front camera — a rear-facing shot should not be flipped
+      const mirror = usingTestPattern || facingMode === 'user';
+
+      // Framing: 1 = fill the canvas (centre-crop, like a camera app), 0 = fit
+      // the whole frame in with blank margins. Pure fill throws away most of a
+      // 4:3 camera on a tall phone screen, which reads as a heavy zoom-in.
+      const canvasAR = W / H, srcAR = sw / sh;
+      const coverW  = srcAR > canvasAR ? sh * canvasAR : sw;
+      const containW = srcAR > canvasAR ? sw : sh * canvasAR;
+      const useW = containW + (coverW - containW) * framing;
+      const useH = useW / canvasAR;
+      const offX = (sw - useW) / 2, offY = (sh - useH) / 2;
+      const xs = useW / W, ys = useH / H;
+
+      for (let y = 0; y < H; y++) {
+        const syf = offY + y * ys;
+        const drow = y * W;
+        if (syf < 0 || syf >= sh) {           // margin row — leave it as paper
+          for (let x = 0; x < W; x++) { lumBuf[drow + x] = 1; rawLum[drow + x] = 1; }
+          continue;
+        }
+        const srow = ((syf | 0) * sw);
+        for (let x = 0; x < W; x++) {
+          const sxf = offX + x * xs;
+          if (sxf < 0 || sxf >= sw) { lumBuf[drow + x] = 1; rawLum[drow + x] = 1; continue; }
+          let sx = sxf | 0;
+          if (mirror) sx = sw - 1 - sx;
+          const i = (srow + sx) * 4;
+          const l = (pixels[i]*0.299 + pixels[i+1]*0.587 + pixels[i+2]*0.114) / 255 + bright;
+          const v = l < 0 ? 0 : (l > 1 ? 1 : l);
+          lumBuf[drow + x] = v;
+          rawLum[drow + x] = v;   // the backdrop works from this, before the
+                                  // detector's auto-contrast and smoothing
+        }
+      }
+
+      // ── auto contrast: stretch the 2nd–98th percentile to full range.
+      //    Under flat indoor light a face may only span 0.4–0.6 luminance;
+      //    without this, the levels and the gate both have nothing to bite on. ──
+      if (autoContrast) {
+        const hist = new Int32Array(256);
+        for (let i = 0; i < W*H; i += 3) hist[(lumBuf[i] * 255) | 0]++;
+        let tot = 0; for (let i = 0; i < 256; i++) tot += hist[i];
+        const loT = tot * 0.02, hiT = tot * 0.98;
+        let acc = 0, lo = 0, hi = 255;
+        for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= loT) { lo = i; break; } }
+        acc = 0;
+        for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= hiT) { hi = i; break; } }
+        let a0 = lo / 255, a1 = hi / 255;
+        // ease the bounds too, or a passing shadow restacks every level at once
+        if (acLo === null) { acLo = a0; acHi = a1; }
+        acLo = acLo * 0.85 + a0 * 0.15;
+        acHi = acHi * 0.85 + a1 * 0.15;
+        a0 = acLo; a1 = acHi;
+        const rng = Math.max(0.05, a1 - a0);
+        for (let i = 0; i < W*H; i++) {
+          const v = (lumBuf[i] - a0) / rng;
+          lumBuf[i] = v < 0 ? 0 : (v > 1 ? 1 : v);
+        }
+      }
+
+      // ── temporal smoothing: blend with the running average. Sensor noise
+      //    reshuffles the contours on every detection pass, and that is what
+      //    made the whole drawing shimmer. ──
+      if (temporal > 0.01) {
+        if (!lumPrev || lumPrev.length !== W*H) { lumPrev = new Float32Array(W*H); lumPrev.set(lumBuf); }
+        for (let i = 0; i < W*H; i++) {
+          lumPrev[i] = lumPrev[i] * temporal + lumBuf[i] * (1 - temporal);
+          lumBuf[i] = lumPrev[i];
+        }
+      }
+
+      if (preBlur > 0) boxBlur(lumBuf, W, H, Math.round(preBlur));
+
+      // ── iso-contours across N brightness levels ──
+      const step = Math.max(1, Math.round(samp));
+      const minLen = Math.max(4, edgeLen);
+      const fresh = [];
+      const nL = Math.max(1, Math.round(nLevels));
+      buildGrid(lumBuf, step);
+
+      // levels evenly spaced across the (auto-contrast normalised) range
+      levelList.length = 0;
+      for (let k = 0; k < nL; k++) levelList.push(thresh - spread / 2 + spread * (k + 0.5) / nL);
+
+      for (let i = 0; i < nL; i++) {
+        const lv = levelList[i];
+        if (lv <= 0 || lv >= 1) continue;
+        const cs = isoContours(lumBuf, lv, step, minLen, gate);
+        for (let k = 0; k < cs.length; k++) fresh.push(cs[k]);
+        if (fresh.length > 400) break;
+      }
+      cachedPaths = fresh;
+
+      // ── photocopy backdrop, built from the same luminance the detector uses.
+      //    Half resolution: four times cheaper to blur, and the upscale is part
+      //    of the soft look. Grain is seeded by pixel index so it holds still
+      //    instead of boiling. ──
+      if (bgOn) buildBackdrop(bgBlur, bgLev, bgCon, bgGrain, copyCol);
+    }
+    let paths = cachedPaths.slice();
+
+    // ── photocopy backdrop, under the type ──
+    if (bgOn && bgImg) {
+      p.push();
+      p.tint(255, bgAmt * 255);
+      p.image(bgImg, 0, 0, W, H);
+      p.pop();
+    }
+
+    // ── contour overlay, for checking what the detector found ──
+    if (showLines) {
+      p.push();
+      p.noFill(); p.stroke(255, 0, 90, 160); p.strokeWeight(1);
+      for (const pa of cachedPaths) {
+        p.beginShape();
+        for (let i = 0; i < pa.length; i += 2) p.vertex(pa[i].x, pa[i].y);
+        p.endShape();
+      }
+      p.pop();
+    }
+
+    // all text goes into the offscreen layer so glow can be applied to the whole mass
+    const g = layer;
+    g.clear();
+    g.textFont(font);
+
+    // ── EDGE zone: text written ALONG each contour, one continuous sentence ──
+    keptCount = 0;
+    {
+      g.fill(edgeCol); g.noStroke(); g.textAlign(g.CENTER, g.CENTER);
+      g.textSize(edgeSz);
+      // ── score each contour: long lines win, centre-of-frame lines get a boost ──
+      const cx = W / 2, cy = H / 2, maxR = Math.hypot(cx, cy);
+      for (const pa of paths) {
+        const mid = pa[Math.floor(pa.length / 2)];
+        const centrality = 1 - Math.hypot(mid.x - cx, mid.y - cy) / maxR;
+        pa.score = pa.len * (1 + edgeBias * 3 * centrality);
+      }
+
+      // ── selection: walk contours best-first and refuse any that would sit
+      //    on top of one already chosen. Iso-contours nest — several near-
+      //    parallel rings around the same feature — and drawing all of them is
+      //    what made the picture muddy and the text overlap. ──
+      paths.sort((a, b) => b.score - a.score);
+      occReset(lineGap);
+      const kept = [], doodles = [];
+      for (const pa of paths) {
+        if (occOverlap(pa) > 0.5) continue;
+        if (pa.len >= textMin) {
+          if (kept.length >= Math.round(maxPaths)) continue;
+          occClaim(pa); kept.push(pa);
+        } else if (doodleOn && dMax > 0) {
+          if (doodles.length >= Math.round(dMax)) continue;
+          occClaim(pa); doodles.push(pa);
+        }
+      }
+
+      // second grid, sized to the type: one glyph per cell, so letters from
+      // different contours can never land on each other
+      occReset(edgeSz * glyphGap * 0.6);
+
+      let drawn = 0, lineId = 1;
+
+      if (phraseMode) {
+        // ── Text flows as WORDS, not as an endless character loop. Each contour
+        //    takes as many whole words as it can hold and then stops, which is
+        //    what leaves air between phrases in a calligram. A contour that
+        //    can't hold even one word becomes a doodle instead of vanishing. ──
+        const words = edgeTxt.split(/\s+/).filter(Boolean);
+        if (words.length) {
+          const wordW = words.map(w => {
+            let t = 0;
+            for (const ch of w) t += g.textWidth(ch) * letterSpc;
+            return t;
+          });
+          const spaceW = g.textWidth(' ') * letterSpc;
+
+          for (const raw of kept) {
+            const pts = smoothPath(raw, Math.round(smoothWin));
+            let total = 0;
+            for (let i = 1; i < pts.length; i++) {
+              total += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+            }
+            const budget = total * 0.92;
+
+            // Start word chosen from the contour's own position. A single running
+            // index across contours meant dropping one line shifted the text on
+            // every line after it — the most visible source of drift.
+            const mid = pts[(pts.length / 2) | 0];
+            const key = (Math.round(mid.x / 24) * 73856093) ^ (Math.round(mid.y / 24) * 19349663);
+            const start = Math.abs(key) % words.length;
+
+            let run = '', runW = 0;
+            for (let n = 0; n < words.length; n++) {
+              const idx = (start + n) % words.length;
+              const add = (run ? spaceW : 0) + wordW[idx];
+              if (runW + add > budget) break;
+              run += (run ? ' ' : '') + words[idx];
+              runW += add;
+            }
+            if (!run) { doodles.push(raw); continue; }
+
+            const r = writeAlongPath(g, pts, run, 0, edgeSz, letterSpc, baseOff,
+                                     echaos, lineId++, true, (total - runW) / 2);
+            drawn += r.drawn;
+          }
+        }
+      } else {
+        let ti = 0;
+        for (const raw of kept) {
+          const pts = smoothPath(raw, Math.round(smoothWin));
+          const r = writeAlongPath(g, pts, edgeTxt, ti, edgeSz, letterSpc, baseOff,
+                                   echaos, lineId++, false, 0);
+          ti = r.ti; drawn += r.drawn;
+        }
+      }
+
+      keptCount = kept.length;
+      doodleCount = doodles.length;
+
+      if (doodles.length) {
+        g.push();
+        g.noFill();
+        g.stroke(edgeCol);
+        g.strokeWeight(dWeight);
+        g.strokeJoin(g.ROUND); g.strokeCap(g.ROUND);
+        for (const raw of doodles) {
+          drawDoodle(g, smoothPath(raw, Math.round(smoothWin)), dRough, dOver);
+        }
+        g.pop();
+      }
+
+      glyphCount = drawn;
+    }
+
+    // ── if there is no camera feed, say so ON THE CANVAS. A quiet line in the
+    //    status bar is not enough — the fallback pattern looks plausible. ──
+    if (usingTestPattern) {
+      const insecure = !window.isSecureContext;
+      p.push();
+      p.noStroke();
+      p.fill(220, 40, 40, 235);
+      p.rect(0, 0, W, insecure ? 76 : 44);
+      p.fill(255);
+      p.textFont('monospace'); p.textAlign(p.LEFT, p.TOP); p.textSize(15);
+      p.text('NO CAMERA FEED — you are looking at the built-in test pattern, not yourself.', 18, 14);
+      if (insecure) {
+        p.textSize(13);
+        p.text(isTouch
+          ? 'Phones only allow the camera over https://. A plain http:// LAN address will not work.'
+          : 'Browsers block the camera on file:// pages. Serve the folder over http://localhost and reopen it there.',
+          18, 42);
+      }
+      p.pop();
+    }
+
+    // ── composite layer onto canvas, with optional glow ──
+    const ctx = p.drawingContext;
+    if (glowOn) {
+      ctx.save();
+      if (glowMode === 'neon') {
+        // shadow taken from the layer's alpha silhouette — one halo per glyph
+        ctx.shadowColor = glowCol;
+        ctx.globalAlpha = glowInt;
+        for (let i = 0; i < glowPass; i++) {
+          ctx.shadowBlur = glowRad * (1 + i * 0.9);
+          ctx.drawImage(g.elt, 0, 0, W, H);
+        }
+      } else {
+        // additive blur passes — only brightens, so it needs a dark background
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < glowPass; i++) {
+          ctx.filter = 'blur(' + (glowRad * (1 + i * 1.4)) + 'px)';
+          ctx.globalAlpha = glowInt / (i + 1);
+          ctx.drawImage(g.elt, 0, 0, W, H);
+        }
+        ctx.filter = 'none';
+      }
+      ctx.restore();
+    }
+    ctx.drawImage(g.elt, 0, 0, W, H);
+
+    // ── status readout ──
+    if (p.frameCount % 15 === 0) {
+      setStatus((usingTestPattern ? 'TEST PATTERN (no camera) · ' : 'cam ' + srcNote + ' · ') + keptCount + ' text · ' + doodleCount + ' doodle · ' + glyphCount + ' chars · ' + Math.round(p.frameRate()) + ' fps');
+    }
+  };
+
+  // ── separable 3-tap box blur, run n times ──
+  function boxBlur(a, w, h, n) {
+    const tmp = new Float32Array(a.length);
+    for (let pass = 0; pass < n; pass++) {
+      for (let y = 0; y < h; y++) {
+        const r = y * w;
+        for (let x = 1; x < w - 1; x++) tmp[r+x] = (a[r+x-1] + a[r+x] + a[r+x+1]) / 3;
+        tmp[r] = a[r]; tmp[r+w-1] = a[r+w-1];
+      }
+      for (let x = 0; x < w; x++) {
+        for (let y = 1; y < h - 1; y++) a[y*w+x] = (tmp[(y-1)*w+x] + tmp[y*w+x] + tmp[(y+1)*w+x]) / 3;
+        a[x] = tmp[x]; a[(h-1)*w+x] = tmp[(h-1)*w+x];
+      }
+    }
+  }
+
+  // ── real-radius blur (sliding window, separable, repeated for a gaussian
+  //    falloff). The old 3-tap box repeated N times had an effective radius of
+  //    only ~2px even at N=6, which is why the softness slider did nothing. ──
+  function blurRadius(a, w, h, r, passes) {
+    r = Math.round(r);
+    if (r < 1) return;
+    const tmp = new Float32Array(a.length);
+    const inv = 1 / (2 * r + 1);
+    for (let pass = 0; pass < passes; pass++) {
+      for (let y = 0; y < h; y++) {
+        const row = y * w;
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += a[row + Math.min(w - 1, Math.max(0, k))];
+        for (let x = 0; x < w; x++) {
+          tmp[row + x] = sum * inv;
+          sum += a[row + Math.min(w - 1, x + r + 1)] - a[row + Math.max(0, x - r)];
+        }
+      }
+      for (let x = 0; x < w; x++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += tmp[Math.min(h - 1, Math.max(0, k)) * w + x];
+        for (let y = 0; y < h; y++) {
+          a[y * w + x] = sum * inv;
+          sum += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+        }
+      }
+    }
+  }
+
+  // ── photocopy backdrop ────────────────────────────────────
+  function buildBackdrop(blurN, level, contrast, grain, hex) {
+    // Build at full resolution when little blur is asked for — the half-res
+    // upscale was adding softness of its own even at softness 0. Drop to half
+    // only when a wide blur is wanted, where the detail is going anyway.
+    const sc = blurN <= 1 ? 1 : 2;
+    const w = Math.max(2, Math.floor(W / sc)), h = Math.max(2, Math.floor(H / sc));
+    if (!bgBuf || bgW !== w || bgH !== h) {
+      bgBuf = new Float32Array(w * h);
+      bgImg = p.createImage(w, h);
+      bgW = w; bgH = h;
+    }
+    for (let y = 0; y < h; y++) {
+      const src = (y * sc) * W, dst = y * w;
+      for (let x = 0; x < w; x++) bgBuf[dst + x] = rawLum[src + x * sc];
+    }
+    if (blurN > 0) blurRadius(bgBuf, w, h, blurN * (sc === 1 ? 1 : 0.5), 2);
+
+    const r = parseInt(hex.slice(1, 3), 16), g2 = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+
+    // Auto-expose: centre the curve on the picture's own median brightness.
+    // A fixed centre blew the highlights out to blank paper whenever you filled
+    // the frame, which is what made this look like fog.
+    let mid = 0.5;
+    {
+      const hist = new Int32Array(64);
+      for (let i = 0; i < w * h; i += 2) hist[(bgBuf[i] * 63) | 0]++;
+      let tot = 0; for (let i = 0; i < 64; i++) tot += hist[i];
+      let acc = 0;
+      for (let i = 0; i < 64; i++) { acc += hist[i]; if (acc >= tot * 0.5) { mid = (i + 0.5) / 64; break; } }
+    }
+    // Curve and grain are per-pixel, so both go through lookup tables — an
+    // exp() and a sin() on every pixel put this at 200ms a frame at full size.
+    const k = 2 + contrast * 30;
+    const shift = mid - (level - 0.5) * 0.6;
+    if (!bgLut) { bgLut = new Uint8Array(512); bgGrainLut = new Float32Array(1024); }
+    for (let i = 0; i < 512; i++) {
+      const t = i / 511;
+      const v = 1 / (1 + Math.exp(-k * (t - shift)));
+      bgLut[i] = ((1 - v) * 255) | 0;
+    }
+    for (let i = 0; i < 1024; i++) bgGrainLut[i] = (seededRnd(i * 0.7351) - 0.5);
+
+    bgImg.loadPixels();
+    const px = bgImg.pixels;
+    const gAmt = grain * 255;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        let a = bgLut[(bgBuf[i] * 511) | 0];
+        if (grain > 0) a += bgGrainLut[((x * 1103515 + y * 12347) & 1023)] * gAmt;
+        const j = i * 4;
+        px[j] = r; px[j+1] = g2; px[j+2] = b;
+        px[j+3] = a < 0 ? 0 : (a > 255 ? 255 : a);   // dark areas hold toner
+      }
+    }
+    bgImg.updatePixels();
+  }
+
+  // ── shared occupancy grid. Contours claim space; anything drawn later that
+  //    would sit on top of a claim is dropped. This is what keeps lines from
+  //    nesting into each other and letters from colliding. ──
+  let occ = null, occW = 0, occH = 0, occCell = 1;
+  function occReset(cell) {
+    occCell = Math.max(2, cell);
+    const nw = Math.ceil(W / occCell), nh = Math.ceil(H / occCell);
+    if (!occ || nw !== occW || nh !== occH) { occW = nw; occH = nh; occ = new Int32Array(occW * occH); }
+    else occ.fill(0);
+  }
+  // Cells record WHO claimed them. Letters on the same contour never block each
+  // other — only a claim from a different line does. With a plain busy flag,
+  // consecutive letters of the same word knocked each other out.
+  function occTake(x, y, owner) {
+    const gx = (x / occCell) | 0, gy = (y / occCell) | 0;
+    if (gx < 0 || gy < 0 || gx >= occW || gy >= occH) return false;
+    const i = gy * occW + gx;
+    if (occ[i] && occ[i] !== owner) return false;
+    occ[i] = owner;
+    return true;
+  }
+  // how much of this contour lands on ground already claimed
+  function occOverlap(pa) {
+    let hit = 0, n = 0;
+    for (let i = 0; i < pa.length; i += 2) {
+      const gx = (pa[i].x / occCell) | 0, gy = (pa[i].y / occCell) | 0;
+      if (gx < 0 || gy < 0 || gx >= occW || gy >= occH) continue;
+      n++; if (occ[gy * occW + gx]) hit++;
+    }
+    return n ? hit / n : 1;
+  }
+  // claim a contour's footprint, dilated by one cell so neighbours stay clear
+  function occClaim(pa) {
+    for (let i = 0; i < pa.length; i++) {
+      const gx = (pa[i].x / occCell) | 0, gy = (pa[i].y / occCell) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const a = gx + dx, b = gy + dy;
+        if (a >= 0 && b >= 0 && a < occW && b < occH) occ[b * occW + a] = 1;
+      }
+    }
+  }
+
+  // ── draw a contour as a hand-drawn stroke: slight perpendicular wander,
+  //    plus a small overshoot past each end the way a pen does. ──
+  function drawDoodle(g, pts, rough, over) {
+    if (pts.length < 3) return;
+    const n = pts.length;
+    // overshoot extends the stroke past each end along the LOCAL direction,
+    // using a near neighbour — extrapolating from a distant point threw long
+    // straight lines across the canvas
+    const ext = Math.min(6, Math.round(n * over));
+    const near = Math.max(1, Math.min(3, n - 1));
+    const d0x = pts[0].x - pts[near].x, d0y = pts[0].y - pts[near].y;
+    const d0l = Math.max(1e-6, Math.hypot(d0x, d0y));
+    const d1x = pts[n-1].x - pts[n-1-near].x, d1y = pts[n-1].y - pts[n-1-near].y;
+    const d1l = Math.max(1e-6, Math.hypot(d1x, d1y));
+    const stepPx = 2;
+
+    g.beginShape();
+    for (let i = -ext; i < n + ext; i++) {
+      let x, y;
+      if (i < 0) {
+        const t = -i * stepPx;
+        x = pts[0].x + (d0x / d0l) * t;
+        y = pts[0].y + (d0y / d0l) * t;
+      } else if (i >= n) {
+        const t = (i - n + 1) * stepPx;
+        x = pts[n-1].x + (d1x / d1l) * t;
+        y = pts[n-1].y + (d1y / d1l) * t;
+      } else {
+        x = pts[i].x; y = pts[i].y;
+      }
+      if (rough > 0) {
+        const rx = x, ry = y;
+        x += (seededRnd(Math.round(rx/5)*2.71 + Math.round(ry/5)*1.13) - 0.5) * rough;
+        y += (seededRnd(Math.round(rx/5)*3.14 + Math.round(ry/5)*4.77) - 0.5) * rough;
+      }
+      g.curveVertex(x, y);
+    }
+    g.endShape();
+  }
+
+  // ── smooth a pixel-staircase path into a fluid writing line ──
+  function smoothPath(pts, w) {
+    if (w < 1 || pts.length < 3) return pts;
+    // a ±8 window on a 24-point eye loop averages the whole thing into a dot —
+    // scale the window to the contour so small features survive
+    w = Math.max(1, Math.min(w, Math.floor(pts.length / 6)));
+    const n = pts.length, out = new Array(n);
+    for (let i = 0; i < n; i++) {
+      let sx = 0, sy = 0, c = 0;
+      const a = Math.max(0, i - w), b = Math.min(n - 1, i + w);
+      for (let j = a; j <= b; j++) { sx += pts[j].x; sy += pts[j].y; c++; }
+      out[i] = { x: sx / c, y: sy / c };
+    }
+    return out;
+  }
+
+  // ── set text along a path: each glyph advances by its own width, rotated to the tangent ──
+  // startD lets the caller centre a phrase on the contour; when `once` is set
+  // the text stops at the end of the string instead of looping to fill the
+  // whole line. Looping is what turned every contour into a solid ribbon of
+  // letters — the reference calligrams write one phrase and then leave air.
+  function writeAlongPath(g, pts, txt, ti, size, spacing, offset, wobble, owner, once, startD) {
+    if (pts.length < 2) return { ti, drawn: 0 };
+    // ── run the sentence left-to-right along the contour. Flipping each glyph
+    //    180° keeps letters upright but leaves the WORD running backwards, which
+    //    is what produced mirror-reading text. Reverse the path instead. ──
+    if (upright) {
+      let netX = 0;
+      for (let i = 1; i < pts.length; i++) netX += pts[i].x - pts[i-1].x;
+      if (netX < 0) pts = pts.slice().reverse();
+    }
+    const cum = new Float32Array(pts.length);
+    for (let i = 1; i < pts.length; i++) {
+      cum[i] = cum[i-1] + Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+    }
+    const total = cum[pts.length - 1];
+    if (total < size) return { ti, drawn: 0 };
+
+    let d = Math.max(0, startD || 0), seg = 1, drawn = 0, written = 0;
+    while (d < total) {
+      if (once && written >= txt.length) break;
+      const ch = once ? txt[written] : txt[ti % txt.length];
+      const w = g.textWidth(ch) * spacing;
+      const target = d + w / 2;
+      while (seg < pts.length - 1 && cum[seg] < target) seg++;
+      if (cum[seg] < target) break;
+      const p0 = pts[seg-1], p1 = pts[seg];
+      const segLen = Math.max(1e-6, cum[seg] - cum[seg-1]);
+      const t = (target - cum[seg-1]) / segLen;
+      let x = p0.x + (p1.x - p0.x) * t;
+      let y = p0.y + (p1.y - p0.y) * t;
+      let ang = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+      // normal, for baseline offset and handwriting wobble
+      const nx = -Math.sin(ang), ny = Math.cos(ang);
+      let off = offset;
+      if (wobble > 0) off += seededRnd(Math.round(x/4)*7.13 + Math.round(y/4)*3.37) * wobble * size * 0.5;
+      x += nx * off; y += ny * off;
+      // Keep upright: reverse the path AND flip the glyph, so words read
+      // left-to-right. Follow direction: do neither, so the text rides the
+      // curve and turns over on the far side. Doing only one of the two gives
+      // upright letters in reversed word order — mirror writing.
+      if (upright && (ang > Math.PI/2 || ang < -Math.PI/2)) ang += Math.PI;
+      // spaces advance the pen but claim nothing
+      if (ch === ' ') { d += w; ti++; written++; continue; }
+      // skip a glyph whose cell is already occupied rather than stacking it
+      if (occTake(x, y, owner)) {
+        g.push();
+        g.translate(x, y);
+        g.rotate(ang);
+        g.text(ch, 0, 0);
+        g.pop();
+        drawn++;
+      }
+      d += w; ti++; written++;
+      if (drawn > 4000) break;
+    }
+    return { ti, drawn };
+  }
+
+  // ── marching-squares iso-contour extraction ───────────────
+  // Edge points are addressed by integer edge id, so linking segments into
+  // continuous polylines is O(1) per step — fast enough for a live camera.
+  let msPX = null, msPY = null, msEdgeSeg = null;
+  let gridBuf = null, gridW = 0, gridH = 0, gridStep = 0;
+  let msEdgeGen = null, msGen = 0;
+
+  // compact copy of the luminance at the sampling stride: all level passes
+  // then read from a small cache-friendly array instead of striding W*H
+  function buildGrid(lum, step) {
+    const gw = Math.floor((W - 1) / step) + 1, gh = Math.floor((H - 1) / step) + 1;
+    if (!gridBuf || gridW !== gw || gridH !== gh) {
+      gridBuf = new Float32Array(gw * gh); gridW = gw; gridH = gh;
+    }
+    for (let gy = 0; gy < gh; gy++) {
+      const src = (gy * step) * W, dst = gy * gw;
+      for (let gx = 0; gx < gw; gx++) gridBuf[dst + gx] = lum[src + gx * step];
+    }
+    gridStep = step;
+  }
+
+  function isoContours(lum, level, step, minLen, gate) {
+    const gw = gridW - 1, gh = gridH - 1;
+    if (gw < 2 || gh < 2) return [];
+    const HOFF = gw * (gh + 1);
+    const total = HOFF + (gw + 1) * gh;
+    if (!msPX || msPX.length !== total) {
+      msPX = new Float32Array(total);
+      msPY = new Float32Array(total);
+      msEdgeSeg = new Int32Array(total * 2);
+      msEdgeGen = new Int32Array(total);
+    }
+    // Generation stamp instead of clearing the edge map: an entry counts as
+    // empty unless it was written during THIS call. A cleanup pass had to run
+    // at every exit point; one missed call site left stale segment indices
+    // behind and chaining jumped to unrelated parts of the image.
+    msGen++;
+
+    const segA = [], segB = [];
+    const at = (gx, gy) => gridBuf[gy * gridW + gx];
+    const ip = (v0, v1) => { const dv = v1 - v0; return Math.abs(dv) < 1e-9 ? 0.5 : (level - v0) / dv; };
+
+    function reg(e, si) {
+      if (msEdgeGen[e] !== msGen) { msEdgeGen[e] = msGen; msEdgeSeg[e*2] = si; msEdgeSeg[e*2+1] = -1; }
+      else if (msEdgeSeg[e*2+1] < 0) msEdgeSeg[e*2+1] = si;
+    }
+    function addSeg(e1, e2) {
+      if (segA.length > 80000) return;   // safety valve on very noisy frames
+      const si = segA.length;
+      segA.push(e1); segB.push(e2);
+      reg(e1, si); reg(e2, si);
+    }
+
+    for (let gy = 0; gy < gh; gy++) {
+      for (let gx = 0; gx < gw; gx++) {
+        const a = at(gx, gy), b = at(gx+1, gy), c = at(gx+1, gy+1), d = at(gx, gy+1);
+        // ── contrast gate, applied per cell so flat/noisy areas never emit
+        //    segments at all. This is both the quality fix and the speed fix. ──
+        if (gate > 0) {
+          const mx = a > b ? (a > c ? (a > d ? a : d) : (c > d ? c : d)) : (b > c ? (b > d ? b : d) : (c > d ? c : d));
+          const mn = a < b ? (a < c ? (a < d ? a : d) : (c < d ? c : d)) : (b < c ? (b < d ? b : d) : (c < d ? c : d));
+          if (mx - mn < gate) continue;
+        }
+        let idx = 0;
+        if (a > level) idx |= 8;
+        if (b > level) idx |= 4;
+        if (c > level) idx |= 2;
+        if (d > level) idx |= 1;
+        if (idx === 0 || idx === 15) continue;
+
+        const eT = gy * gw + gx;
+        const eB = (gy + 1) * gw + gx;
+        const eL = HOFF + gy * (gw + 1) + gx;
+        const eR = HOFF + gy * (gw + 1) + gx + 1;
+
+        msPX[eT] = (gx + ip(a, b)) * step; msPY[eT] = gy * step;
+        msPX[eB] = (gx + ip(d, c)) * step; msPY[eB] = (gy + 1) * step;
+        msPX[eL] = gx * step;              msPY[eL] = (gy + ip(a, d)) * step;
+        msPX[eR] = (gx + 1) * step;        msPY[eR] = (gy + ip(b, c)) * step;
+
+        switch (idx) {
+          case 1: case 14: addSeg(eL, eB); break;
+          case 2: case 13: addSeg(eB, eR); break;
+          case 3: case 12: addSeg(eL, eR); break;
+          case 4: case 11: addSeg(eT, eR); break;
+          case 6: case 9:  addSeg(eT, eB); break;
+          case 7: case 8:  addSeg(eL, eT); break;
+          case 5:  addSeg(eL, eT); addSeg(eB, eR); break;
+          case 10: addSeg(eL, eB); addSeg(eT, eR); break;
+        }
+      }
+    }
+
+    // ── chain segments into polylines ──
+    const nSeg = segA.length;
+    if (!nSeg) return [];
+    const used = new Uint8Array(nSeg);
+    const out = [];
+
+    function nextSeg(edge, from) {
+      if (msEdgeGen[edge] !== msGen) return -1;
+      const s0 = msEdgeSeg[edge*2], s1 = msEdgeSeg[edge*2+1];
+      if (s0 >= 0 && s0 !== from && !used[s0]) return s0;
+      if (s1 >= 0 && s1 !== from && !used[s1]) return s1;
+      return -1;
+    }
+
+    for (let i = 0; i < nSeg; i++) {
+      if (used[i]) continue;
+      used[i] = 1;
+      const edges = [segA[i], segB[i]];
+      // walk forward from the tail, then flip and walk the other way
+      for (let dir = 0; dir < 2; dir++) {
+        if (dir === 1) edges.reverse();
+        let cur = i;
+        while (true) {
+          const tail = edges[edges.length - 1];
+          const nx = nextSeg(tail, cur);
+          if (nx < 0) break;
+          used[nx] = 1;
+          edges.push(segA[nx] === tail ? segB[nx] : segA[nx]);
+          cur = nx;
+          if (edges.length > 20000) break;
+        }
+      }
+      if (edges.length < 3) continue;
+      const pts = new Array(edges.length);
+      let len = 0;
+      for (let k = 0; k < edges.length; k++) {
+        pts[k] = { x: msPX[edges[k]], y: msPY[edges[k]] };
+        if (k) len += Math.hypot(pts[k].x - pts[k-1].x, pts[k].y - pts[k-1].y);
+      }
+      if (len < minLen) continue;
+
+      // ── contrast gate: reject contours that sit in flat/noisy areas.
+      //    A real feature edge has a steep brightness gradient; sensor noise
+      //    in a flat wall produces a level crossing with almost none. ──
+      if (gate > 0) {
+        let gsum = 0, gn = 0;
+        const jump = Math.max(1, Math.floor(pts.length / 12));
+        for (let k = 0; k < pts.length; k += jump) {
+          const px = Math.round(pts[k].x), py = Math.round(pts[k].y);
+          if (px < step || py < step || px >= W-step || py >= H-step) continue;
+          const gx = lum[py*W + px + step] - lum[py*W + px - step];
+          const gy = lum[(py+step)*W + px] - lum[(py-step)*W + px];
+          gsum += Math.abs(gx) + Math.abs(gy); gn++;
+        }
+        if (gn && (gsum / gn) < gate) continue;
+      }
+
+      pts.len = len;
+      out.push(pts);
+    }
+    return out;
+  }
+
+  // ── intro animation: text arranged into circle shapes ────
+  function drawIntro(p) {
+    const t = introFrame / INTRO_DURATION;
+    p.background(255);
+    p.noStroke();
+    p.textFont("'Courier New', monospace");
+
+    const sentence = 'In statistics, an outlier is a data point that exists within the sample yet deviates from the expected range. ';
+    const sz = 9;
+    const lineH = sz * 1.35;
+    const charW = sz * 0.605;
+
+    // define circle grid — same layout as screenshot
+    const circles = [];
+    const cols = 5, rows = 4;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        circles.push({
+          x: W * (c + 0.5 + (r % 2 === 0 ? 0 : 0.5)) / (cols + (r % 2 === 0 ? 0 : 0.5)),
+          y: H * (r + 0.5) / rows,
+          R: Math.min(W / cols, H / rows) * 0.44,
+        });
+      }
+    }
+
+    // build lookup: for each grid cell, is it inside a circle?
+    function insideCircle(x, y) {
+      for (const c of circles) {
+        const dx = x + charW/2 - c.x, dy = y + lineH/2 - c.y;
+        if (dx*dx + dy*dy < c.R*c.R) return true;
+      }
+      return false;
+    }
+
+    // fill text — characters on the WHITE background regions only
+    // inside circles = white (void); outside = text
+    let si = 0;
+    p.textAlign(p.LEFT, p.TOP);
+    for (let y = 0; y < H + lineH; y += lineH) {
+      for (let x = 0; x < W + charW; x += charW) {
+        if (!insideCircle(x, y)) {
+          p.fill(0, 220);
+          p.textSize(sz);
+          p.text(sentence[si % sentence.length], x, y);
+        }
+        si++;
+      }
+    }
+
+    // fade in title over the top (appears mid-animation)
+    const labelA = p.map(t, 0.5, 0.8, 0, 255, true);
+    if (labelA > 0) {
+      // find a clear circle near centre to place title
+      p.textAlign(p.CENTER, p.CENTER);
+      p.noStroke(); p.fill(255); // white knockout
+      p.rect(W/2 - 90, H/2 - 20, 180, 36);
+      p.fill(0, labelA);
+      p.textSize(11);
+      p.text('concrete camera', W/2, H/2 - 7);
+      p.fill(130, labelA);
+      p.textSize(8);
+      p.text('image · edge · text overlay', W/2, H/2 + 9);
+    }
+
+    // flash to white on exit
+    if (introFrame >= INTRO_DURATION - 8) {
+      const flashA = p.map(introFrame, INTRO_DURATION - 8, INTRO_DURATION, 0, 255);
+      p.noStroke(); p.fill(255, flashA);
+      p.rect(0, 0, W, H);
+    }
+  }
+
+  function seededRnd(seed) {
+    const x = Math.sin(seed+1)*43758.5453;
+    return (x - Math.floor(x)) * 2 - 1;
+  }
+
+  function testPattern() {
+    const arr = new Uint8Array(W * H * 4);
+    const t = p.frameCount * 0.015;
+    for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
+      const v = Math.floor((Math.sin(x*.04+t)*.5+.5)*(Math.cos(y*.03+t*.7)*.5+.5)*255);
+      const i=(y*W+x)*4;
+      arr[i]=arr[i+1]=arr[i+2]=v; arr[i+3]=255;
+    }
+    return arr;
+  }
+
+});
+</script>
+</body>
+</html>
