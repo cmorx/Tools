@@ -942,8 +942,23 @@ function toggleRecord() {
   ].forEach(m => {
     if (!mimeType && MediaRecorder.isTypeSupported(m)) mimeType = m;
   });
-  try { mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {}); }
-  catch (e) { setStatus('recording unavailable here — use PNG'); return; }
+  // Bitrate has to be asked for. Left to itself MediaRecorder picks something
+  // conservative, and this picture is the worst case for a codec: thin black
+  // lines over flat grey. Starved of bits the edges smear, which reads as a
+  // low-resolution video even though the frames are full size.
+  const fps = 30;
+  const pxRate = _cnv.elt.width * _cnv.elt.height * fps;
+  const bitrate = Math.round(Math.min(24e6, Math.max(6e6, pxRate * 0.22)));
+
+  try {
+    mediaRecorder = new MediaRecorder(stream, mimeType
+      ? { mimeType, videoBitsPerSecond: bitrate }
+      : { videoBitsPerSecond: bitrate });
+  } catch (e) {
+    // some builds reject the bitrate hint — fall back rather than fail
+    try { mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {}); }
+    catch (e2) { setStatus('recording unavailable here — use PNG'); return; }
+  }
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
@@ -955,9 +970,10 @@ function toggleRecord() {
     showResult(blob, 'concrete_' + ts + '.' + ext, 'video');
     isRecording = false;
     setRecUI('● Rec 10s', 'REC', false);
-    setStatus('video saved · ' + ext);
+    setStatus('video saved · ' + ext + ' · ' + _cnv.elt.width + 'x' + _cnv.elt.height +
+              ' · ' + Math.round(bitrate / 1e6) + ' Mbps');
   };
-  mediaRecorder.start(); isRecording = true;
+  mediaRecorder.start(1000); isRecording = true;
   let t = 10;
   setRecUI('■ ' + t + 's…', t + 's', true);
   setStatus('recording 10s…');
