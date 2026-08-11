@@ -93,7 +93,7 @@
     width:100%;height:18px;margin:0;
     -webkit-appearance:none;appearance:none;
     background:transparent;outline:none;cursor:ew-resize;
-    touch-action:none;                       /* drag stays with the slider, not the page */
+    touch-action:pan-y;                     /* sideways = slider, up/down = scroll the panel */
     -webkit-tap-highlight-color:transparent;
   }
   .slider input::-webkit-slider-thumb{
@@ -106,14 +106,14 @@
 
   /* touch screens: fingers need a much bigger grab area than a mouse */
   @media (pointer:coarse){
-    .slider{height:40px}
-    .slider input{height:40px}
+    .slider{height:32px}
+    .slider input{height:32px}
     .slider input::-webkit-slider-thumb{
-      width:22px;height:22px;border:none;border-radius:0;
+      width:16px;height:16px;border:none;border-radius:0;
       background:var(--ink);box-sizing:border-box;
     }
     .slider input::-moz-range-thumb{
-      width:22px;height:22px;border:none;border-radius:0;
+      width:16px;height:16px;border:none;border-radius:0;
       background:var(--ink);box-sizing:border-box;
     }
     .row{gap:2px}
