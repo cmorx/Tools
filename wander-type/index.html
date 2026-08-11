@@ -83,13 +83,18 @@
 
   /* slider: the track is itself a random walk */
   .slider{position:relative;height:18px}
-  .slider svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+  .slider svg{
+    position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+    width:100%;height:18px;overflow:visible;pointer-events:none;
+  }
   .slider svg path{fill:none;stroke:var(--ink);stroke-width:1;vector-effect:non-scaling-stroke}
   .slider input{
     position:relative;
     width:100%;height:18px;margin:0;
     -webkit-appearance:none;appearance:none;
     background:transparent;outline:none;cursor:ew-resize;
+    touch-action:pan-y;                     /* sideways = slider, up/down = scroll the panel */
+    -webkit-tap-highlight-color:transparent;
   }
   .slider input::-webkit-slider-thumb{
     -webkit-appearance:none;appearance:none;
@@ -97,6 +102,23 @@
   }
   .slider input::-moz-range-thumb{
     width:9px;height:9px;background:var(--ink);border:none;border-radius:0;
+  }
+
+  /* touch screens: fingers need a much bigger grab area than a mouse */
+  @media (pointer:coarse){
+    .slider{height:40px}                     /* hit area stays generous */
+    .slider input{height:40px}
+    .slider input::-webkit-slider-thumb{
+      width:18px;height:18px;border:none;border-radius:0;
+      background:var(--ink);box-sizing:border-box;
+    }
+    .slider input::-moz-range-thumb{
+      width:18px;height:18px;border:none;border-radius:0;
+      background:var(--ink);box-sizing:border-box;
+    }
+    .row{gap:2px}
+    .group{gap:8px}
+    .lab,.val{font-size:11px}
   }
   .slider input:focus-visible::-webkit-slider-thumb{outline:2px solid var(--ink);outline-offset:3px}
 
@@ -118,6 +140,7 @@
     font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#c8c8c8;
     pointer-events:none;user-select:none;
   }
+  .hint .t{display:none}
   .count{
     position:absolute;right:22px;bottom:18px;
     font-size:9px;letter-spacing:.2em;color:#c8c8c8;
@@ -129,6 +152,13 @@
     .rail{order:2;border-right:none;border-top:1px solid var(--rule);max-height:52vh}
     .stage{order:1;min-height:48vh}
     .actions{margin-top:8px}
+    /* stack the two labels — side by side they collide on a phone */
+    .hint{left:16px;bottom:14px}
+    .count{left:16px;right:auto;bottom:30px}
+  }
+  @media (pointer:coarse){
+    .hint .d{display:none}
+    .hint .t{display:inline}
   }
   @media (prefers-reduced-motion:reduce){button{transition:none}}
 </style>
@@ -205,7 +235,7 @@
 
 <main class="stage" id="stage">
   <canvas id="c"></canvas>
-  <div class="hint">click canvas or press R to walk again</div>
+  <div class="hint"><span class="d">click canvas or press R to walk again</span><span class="t">tap canvas to walk again</span></div>
   <div class="count" id="count"></div>
 </main>
 
