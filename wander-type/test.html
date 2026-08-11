@@ -109,13 +109,13 @@
     .slider{height:40px}
     .slider input{height:40px}
     .slider input::-webkit-slider-thumb{
-      width:26px;height:26px;border-radius:50%;
-      border:5px solid var(--paper);           /* white ring keeps the dot visually small */
+      width:26px;height:26px;border-radius:0;
+      border:7px solid var(--paper);           /* white ring keeps the mark visually small */
       background:var(--ink);box-sizing:border-box;
     }
     .slider input::-moz-range-thumb{
-      width:26px;height:26px;border-radius:50%;
-      border:5px solid var(--paper);
+      width:26px;height:26px;border-radius:0;
+      border:7px solid var(--paper);
       background:var(--ink);box-sizing:border-box;
     }
     .row{gap:2px}
@@ -153,6 +153,12 @@
     .rail{order:2;border-right:none;border-top:1px solid var(--rule);max-height:52vh}
     .stage{order:1;min-height:48vh}
     .actions{margin-top:8px}
+    /* two bottom labels won't fit side by side — keep the counter only */
+    .hint{display:none}
+    .count{left:auto;right:16px;bottom:14px}
+  }
+  @media (pointer:coarse){
+    .hint{display:none}
   }
   @media (prefers-reduced-motion:reduce){button{transition:none}}
 </style>
