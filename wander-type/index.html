@@ -350,7 +350,43 @@ let bounds = {minX:0,minY:0,maxX:1,maxY:1};
 function rnd(a, b) { return Math.random()*(b-a)+a; }
 const $ = id => document.getElementById(id);
 
-/* ---------- the walk (unchanged) ---------- */
+
+/* One walk step = one point, so a slow walk emits thousands of them, most
+   sitting exactly on the line between their neighbours. This drops only
+   those — the tolerance is deliberately tiny, so the drawing is unchanged
+   to the eye while the exported file carries a fraction of the anchors. */
+const SIMPLIFY = 0.1;
+
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    if (b - a < 2) continue;
+    const ax = pts[a][0], ay = pts[a][1];
+    const bx = pts[b][0], by = pts[b][1];
+    const dx = bx - ax, dy = by - ay;
+    const seg = Math.hypot(dx, dy);
+
+    let far = -1, best = eps;
+    for (let i = a + 1; i < b; i++) {
+      const px = pts[i][0], py = pts[i][1];
+      const d = seg < 1e-9 ? Math.hypot(px - ax, py - ay)
+                           : Math.abs(dy * px - dx * py + bx * ay - by * ax) / seg;
+      if (d > best) { best = d; far = i; }
+    }
+    if (far > 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+
+  const out = [];
+  for (let i = 0; i < pts.length; i++) if (keep[i]) out.push(pts[i]);
+  return out;
+}
+
+/* ---------- the walk (unchanged from the original tool) ---------- */
 function walkStroke(waypoints, ox, oy, gw, gh, wander, inertia, speed) {
   const wpts = waypoints.map(p => [ox + p[0]*gw, oy + p[1]*gh]);
   const path = [];
@@ -369,8 +405,10 @@ function walkStroke(waypoints, ox, oy, gw, gh, wander, inertia, speed) {
       const dx = tx - px, dy = ty - py;
       const dist = Math.hypot(dx, dy) + 0.001;
 
+      // Pull force toward target
       const pull = Math.min(dist * 0.2, 4.0) * speed;
 
+      // Random wander force — bigger and more erratic
       const wanderAngle = rnd(0, Math.PI * 2);
       const wanderForce = wander * rnd(0.3, 1.0);
       const wx = Math.cos(wanderAngle) * wanderForce;
@@ -410,7 +448,7 @@ function params() {
   };
 }
 
-/* ---------- layout: walk every glyph in a coordinate space of its own ---------- */
+/* ---------- layout ---------- */
 function generate() {
   const p = params();
   allPaths = [];
@@ -427,7 +465,7 @@ function generate() {
       if (!skel) { x += p.gw + p.tr; return; }
       const gw = p.gw * (WIDTH[c] || 1);
       skel.forEach(stroke => {
-        allPaths.push(walkStroke(stroke, x, y, gw, p.gh, p.wander, p.inertia, p.speed));
+        allPaths.push(rdp(walkStroke(stroke, x, y, gw, p.gh, p.wander, p.inertia, p.speed), SIMPLIFY));
       });
       x += gw + p.tr;
     });
@@ -444,7 +482,7 @@ function generate() {
   bounds = allPaths.length ? {minX, minY, maxX, maxY} : {minX:0, minY:0, maxX:1, maxY:1};
 
   const pts = allPaths.reduce((n, path) => n + path.length, 0);
-  $('count').textContent = allPaths.length ? allPaths.length + ' strokes / ' + pts + ' steps' : '';
+  $('count').textContent = allPaths.length ? allPaths.length + ' strokes / ' + pts + ' points' : '';
 
   draw();
 }
@@ -489,22 +527,48 @@ function draw() {
 function svgMarkup() {
   const sw = parseFloat($('weight').value) / 2;
   const pad = sw * 3 + 20;
+  const x0 = bounds.minX - pad, y0 = bounds.minY - pad;
   const w = (bounds.maxX - bounds.minX) + pad*2;
   const h = (bounds.maxY - bounds.minY) + pad*2;
+
+  // stroke attributes live on the group, not repeated on every path — keeps the file small
   let paths = '';
   allPaths.forEach(path => {
-    const d = path.map((pt,i) => (i===0?'M':'L') + pt[0].toFixed(1) + ',' + pt[1].toFixed(1)).join(' ');
-    paths += `<path d="${d}" stroke="#111111" stroke-width="${sw}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n`;
+    let d = '', lx = null, ly = null;
+    path.forEach((pt, i) => {
+      const x = +pt[0].toFixed(1), y = +pt[1].toFixed(1);
+      if (i === 0) { d += 'M' + x + ' ' + y; lx = x; ly = y; return; }
+      if (x === lx && y === ly) return;
+      d += 'L' + x + ' ' + y; lx = x; ly = y;
+    });
+    if (d) paths += '<path d="' + d + '"/>';
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(0)}" height="${h.toFixed(0)}" viewBox="${(bounds.minX-pad).toFixed(1)} ${(bounds.minY-pad).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}">\n<rect x="${(bounds.minX-pad).toFixed(1)}" y="${(bounds.minY-pad).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff"/>\n${paths}</svg>`;
+
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" ' +
+    'width="' + w.toFixed(0) + '" height="' + h.toFixed(0) + '" ' +
+    'viewBox="' + x0.toFixed(1) + ' ' + y0.toFixed(1) + ' ' + w.toFixed(1) + ' ' + h.toFixed(1) + '">' +
+    '<rect x="' + x0.toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="#ffffff"/>' +
+    '<g fill="none" stroke="#111111" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round">' +
+    paths + '</g></svg>';
+}
+
+/* Blob download — a data: URI silently truncates once the drawing gets long,
+   and a half-written SVG is what makes Illustrator refuse to open the file. */
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 function saveSVG() {
   if (!allPaths.length) return;
-  const a = document.createElement('a');
-  a.download = 'wander_type.svg';
-  a.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgMarkup());
-  a.click();
+  download(new Blob([svgMarkup()], {type:'image/svg+xml;charset=utf-8'}), 'wander_type.svg');
 }
 
 function savePNG() {
@@ -534,10 +598,14 @@ function savePNG() {
     o.stroke();
   });
 
-  const a = document.createElement('a');
-  a.download = 'wander_type.png';
-  a.href = off.toDataURL('image/png');
-  a.click();
+  if (off.toBlob) {
+    off.toBlob(b => { if (b) download(b, 'wander_type.png'); }, 'image/png');
+  } else {
+    const a = document.createElement('a');
+    a.download = 'wander_type.png';
+    a.href = off.toDataURL('image/png');
+    a.click();
+  }
 }
 
 /* ---------- slider tracks, walked with the same algorithm ---------- */
