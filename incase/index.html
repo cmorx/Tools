@@ -239,6 +239,7 @@
       <option value="2">Planar — turns with the object</option>
       <option value="3">Planar — fixed in space</option>
       <option value="4">Cylindrical — once around</option>
+      <option value="5">Planar — from above</option>
     </select>
     <div style="height:12px"></div>
     <label class="row"><span class="k">Scale</span><input id="scale" type="range" min="0.05" max="4" step="0.01" value="0.7"><output id="scaleV"></output></label>
@@ -2386,10 +2387,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
               texel = texture2D( uTex, uv );
             } else if ( uMode == 1 ) {
               vec3 n = normalize( abs( vObjN ) + 1e-5 );
-              n = n / ( n.x + n.y + n.z );
-              vec2 uvx = rot2( vObjP.zy, uRot ) / sc + 0.5 + uOffset;
-              vec2 uvy = rot2( vObjP.xz, uRot ) / sc + 0.5 + uOffset;
-              vec2 uvz = rot2( vObjP.xy, uRot ) / sc + 0.5 + uOffset;
+              n = pow( n, vec3( 5.0 ) );          // let the dominant axis win,
+              n = n / ( n.x + n.y + n.z );        // otherwise the three ghost together
+              // Flip each plane by the side it faces, or the far half of the object
+              // shows the image mirrored.
+              vec3 sn = sign( vObjN + 1e-6 );
+              vec2 uvx = rot2( vec2( -vObjP.z * sn.x, vObjP.y ), uRot ) / sc + 0.5 + uOffset;
+              vec2 uvy = rot2( vec2(  vObjP.x, -vObjP.z * sn.y ), uRot ) / sc + 0.5 + uOffset;
+              vec2 uvz = rot2( vec2(  vObjP.x * sn.z, vObjP.y ), uRot ) / sc + 0.5 + uOffset;
               texel = texture2D( uTex, uvx ) * n.x
                     + texture2D( uTex, uvy ) * n.y
                     + texture2D( uTex, uvz ) * n.z;
@@ -2399,10 +2404,15 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
             } else if ( uMode == 3 ) {
               vec2 uv = rot2( vWP.xy, uRot ) / sc + 0.5 + uOffset;
               texel = texture2D( uTex, uv );
-            } else {
+            } else if ( uMode == 4 ) {
               float a = atan( vObjP.z, vObjP.x );
               vec2 uv = vec2( a / 6.2831853 + 0.5, vObjP.y / sc + 0.5 );
               uv = rot2( uv - 0.5, uRot ) + 0.5 + uOffset;
+              texel = texture2D( uTex, uv );
+            } else {
+              // straight down the Y axis — the only way a dome or a lying-flat
+              // object shows a whole picture when you look at it from above
+              vec2 uv = rot2( vec2( vObjP.x, -vObjP.z ), uRot ) / sc + 0.5 + uOffset;
               texel = texture2D( uTex, uv );
             }
             if ( uCut == 1 ) {
