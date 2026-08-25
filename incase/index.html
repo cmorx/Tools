@@ -166,14 +166,26 @@
   body.viewer.withfs .stagebtns{display:flex}
   body.viewer.withfs #panelToggle{display:none}
 
-  /* ---------- narrow / embedded ---------- */
-  @media (max-width: 900px){
-    #panel{
-      position:absolute;z-index:10;left:0;top:0;bottom:0;
-      width:272px;flex-basis:272px;
-      border-right:1px solid var(--line);
+  /* ---------- phones: stack it, canvas over panel ---------- */
+  @media (max-width: 820px){
+    body{flex-direction:column}
+    #stage{
+      flex:1 1 auto;width:100%;height:auto;min-height:0;
+      order:0;
     }
-    .stagebtns{left:auto;right:16px;z-index:20}
+    #panel{
+      order:1;
+      position:static;
+      width:100%;flex:0 0 46vh;max-height:46vh;
+      padding:14px 16px 32px;
+      border-right:0;
+      border-top:1px solid var(--line);
+      -webkit-overflow-scrolling:touch;
+      overscroll-behavior:contain;
+    }
+    h1{font-size:13px;margin:0 0 16px;max-width:none}
+    fieldset{margin:0 0 16px}
+    .stagebtns{left:12px;right:auto;top:12px;z-index:20}
     .hint{display:none}
   }
   @media (max-height: 520px){ .hint{display:none} }
@@ -3297,6 +3309,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
     renderer.setSize(w, h);          // sets the canvas CSS size too
     camera.aspect = w / h;
+    // A perspective camera fixes the VERTICAL fov, so a tall narrow canvas crops
+    // wide objects sideways. Below 1:1, widen the fov to hold the horizontal framing.
+    const BASE_FOV = 32;
+    camera.fov = camera.aspect < 1
+      ? Math.min(78, 2 * Math.atan(Math.tan((BASE_FOV * Math.PI) / 360) / camera.aspect) * 180 / Math.PI)
+      : BASE_FOV;
     camera.updateProjectionMatrix();
     stage.classList.toggle('framed', frameRatio > 0);
   }
@@ -3854,8 +3872,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     });
   });
 
-  // in a narrow embed the panel starts out of the way
-  if (innerWidth < 900) document.body.classList.add('collapsed');
+  // an embed starts with the panel out of the way; a phone gets the stacked layout
+  if (embedded) document.body.classList.add('collapsed');
 
   /* ---------- loop ---------- */
   let t = 0;
