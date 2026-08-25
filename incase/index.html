@@ -145,7 +145,7 @@
   #stage{flex:1;position:relative;height:100%;min-width:0;background:var(--stage)}
   #stage canvas{
     display:block;position:absolute;left:50%;top:50%;
-    transform:translate(-50%,-50%);touch-action:none;
+    transform:translate(-50%,-50%);touch-action:pan-y;
   }
   #stage.framed{background:#f2f2f2}
   #stage.framed canvas{box-shadow:0 0 0 1px var(--ink)}
@@ -3275,7 +3275,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     applyCam();
   });
   addEventListener('pointerup', () => { drag = null; });
+  renderer.domElement.addEventListener('pointercancel', () => { drag = null; });
+  // Inside an iframe a bare wheel must keep scrolling the host page, or the embed
+  // traps the reader. There, zooming needs ctrl/⌘ (trackpad pinch also arrives as
+  // ctrlKey). Standalone, the page can't scroll anyway, so plain wheel zooms.
+  const embedded = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
   renderer.domElement.addEventListener('wheel', (e) => {
+    if (embedded && !(e.ctrlKey || e.metaKey)) return;      // let the page scroll
     e.preventDefault();
     cam.dist = Math.max(0.8, Math.min(9, cam.dist * (1 + Math.sign(e.deltaY) * 0.08)));
     applyCam();
