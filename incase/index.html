@@ -60,6 +60,7 @@
   input[type=range]{
     -webkit-appearance:none;appearance:none;
     flex:1;height:1px;background:var(--ink);outline:none;
+    touch-action:none;                       /* gesture belongs to the slider, not the scroller */
   }
   input[type=range]::-webkit-slider-thumb{
     -webkit-appearance:none;width:9px;height:9px;border-radius:0;
@@ -70,6 +71,23 @@
   }
   input[type=range]:disabled{background:var(--hair)}
   input[type=range]:disabled::-webkit-slider-thumb{background:var(--hair)}
+
+  /* touch devices: keep the 1px line, but give the finger a real target */
+  @media (pointer:coarse){
+    input[type=range]{
+      height:26px;background:transparent;
+      background-image:linear-gradient(var(--ink),var(--ink));
+      background-size:100% 1px;background-position:center;background-repeat:no-repeat;
+    }
+    input[type=range]::-webkit-slider-thumb{width:16px;height:16px}
+    input[type=range]::-moz-range-thumb{width:16px;height:16px}
+    input[type=range]:disabled{
+      background:transparent;
+      background-image:linear-gradient(var(--hair),var(--hair));
+      background-size:100% 1px;background-position:center;background-repeat:no-repeat;
+    }
+    label.row{margin:0 0 2px}
+  }
 
   select{
     width:100%;padding:6px 6px;font:inherit;font-size:11px;
@@ -3308,6 +3326,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     cam.dist = Math.max(0.8, Math.min(9, cam.dist * (1 + Math.sign(e.deltaY) * 0.08)));
     applyCam();
   }, { passive: false });
+
+  // Same trade-off for touch. Embedded, the canvas keeps `pan-y` so a vertical
+  // swipe still scrolls the host page. Standalone, nothing behind it scrolls,
+  // so the canvas takes the whole gesture and orbiting works on both axes.
+  if (!embedded) renderer.domElement.style.touchAction = 'none';
 
   let frameRatio = 0;   // 0 = fill the window; otherwise width / height
   function resize() {
