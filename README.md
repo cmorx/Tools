@@ -4,6 +4,16 @@ Small browser tools I build for my own design work.
 
 Each one is a single self-contained HTML file. Open the file, or follow the link.
 
+All the tools I made are free to explore for personal and non-commercial creative use.
+
+Please credit Jingran Zhang and link to the original tool whenever sharing work created with it.
+
+Copying, modifying, or redistributing the source code or the tool itself without prior permission is not permitted. Commercial use of the tool or its source code requires prior written authorisation.
+
+Please respect the work behind the tool and help keep its original source visible.
+
+© 2026 Jingran Zhang. All rights reserved.
+
 ---
 
 ### In case you want a/an different…
