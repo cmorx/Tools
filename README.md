@@ -6,7 +6,7 @@ Each one is a single self-contained HTML file. Open the file, or follow the link
 
 All the tools I made are free to explore for personal and non-commercial creative use.
 
-Please credit Jingran Zhang and link to the original tool whenever sharing work created with it.
+Please credit Jingran Zhang or mavisietmavis and link to the original tool whenever sharing work created with it.
 
 Copying, modifying, or redistributing the source code or the tool itself without prior permission is not permitted. Commercial use of the tool or its source code requires prior written authorisation.
 
